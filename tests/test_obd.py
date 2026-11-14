@@ -16,6 +16,11 @@ class Connection:
         return Response()
 
 
+class DisconnectedConnection:
+    def is_connected(self):
+        return False
+
+
 def test_get_dtc_without_hardware():
     assert OBDClient(connection=Connection()).get_dtc() == [("P0300", "Random misfire")]
 
@@ -25,7 +30,7 @@ def test_clear_dtc():
 
 
 def test_disconnected_client_is_safe():
-    client = OBDClient(connection=None)
+    client = OBDClient(connection=DisconnectedConnection())
     assert client.is_connected() is False
     assert client.get_dtc() == []
     assert client.clear_dtc() is False
