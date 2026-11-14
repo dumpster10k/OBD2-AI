@@ -2,80 +2,77 @@
 
 ## 1. Branching
 
-- `master` jest gałęzią stabilną i release'ową.
-- `development` jest gałęzią integracyjną.
-- Każde zadanie realizuj na osobnej gałęzi utworzonej z aktualnego `development`.
-- Nazewnictwo: `feature/<nazwa>`, `fix/<nazwa>`, `test/<nazwa>` lub `docs/<nazwa>`.
-- Nie commituj bezpośrednio do `master` ani `development`.
+- `master` stanowi stabilną gałąź wydawniczą (release).
+- `development` stanowi gałąź integracyjną.
+- Każde zadanie realizuj na dedykowanej gałęzi utworzonej z aktualnego stanu `development`.
+- Stosuj konwencję nazewnictwa: `feature/<nazwa>`, `fix/<nazwa>`, `test/<nazwa>` lub `docs/<nazwa>`.
+- Wszelkie commity umieszczaj wyłącznie na dedykowanej gałęzi zadaniowej.
 
 ## 2. Praca przed commitem
 
 1. Pobierz aktualny kod: `git fetch origin`.
-2. Zaktualizuj gałąź bazową.
-3. Uruchom testy lokalnie:
-   `PYTHONPATH=. python -m pytest -q --cov=. --cov-report=term-missing`.
-4. Sprawdź format i jakość zmienionych plików.
-5. Nie dodawaj sekretów, tokenów, plików `.env`, cache ani artefaktów builda.
+2. Zaktualizuj gałąź bazową względem `origin/development`.
+3. Uruchom lokalną bramkę weryfikacyjną:
+   `PYTHONPATH=. python -m pytest --cov=core --cov=services --cov-report=term-missing --cov-fail-under=80`.
+4. Zweryfikuj format i jakość zmienionych plików.
+5. Do repozytorium dołączaj wyłącznie pliki źródłowe; sekrety, tokeny, środowiska lokalne i artefakty builda izoluj w `.gitignore`.
 
 ## 3. Commity
 
-Stosuj Conventional Commits:
+Stosuj standard Conventional Commits:
 
 - `feat:` nowa funkcjonalność
 - `fix:` poprawka błędu
 - `test:` testy
-- `refactor:` refaktoryzacja bez zmiany zachowania
+- `refactor:` refaktoryzacja zachowująca istniejące zachowanie
 - `docs:` dokumentacja
 - `ci:` konfiguracja CI/CD
-- `chore:` prace techniczne
+- `chore:` zadania techniczne i utrzymaniowe
 
-Zasady:
+Zasady tworzenia commitów:
 
-- Jeden commit powinien reprezentować jedną logiczną zmianę.
-- Tytuł w trybie rozkazującym, maksymalnie 72 znaki.
-- Nie używaj commitów typu `update`, `changes`, `misc` bez konkretnego opisu.
-- Commituj test razem z funkcjonalnością, której dotyczy.
+- Jeden commit reprezentuje dokładnie jedną logiczną zmianę.
+- Tytuł pisz w trybie rozkazującym, o długości do 72 znaków.
+- Tytuł commita musi jednoznacznie określać cel i zakres modyfikacji.
+- Zmiany w kodzie commituj łącznie z testami, które je weryfikują.
 
 ## 4. Pull Request
 
-Każda zmiana trafia przez PR:
+Wszystkie zmiany integruj przez Pull Request:
 
-- feature/fix/test/docs -> `development`
-- `development` -> `master` wyłącznie jako PR release'owy
+- `feature/*`, `fix/*`, `test/*`, `docs/*` kieruj do gałęzi `development`.
+- PR do gałęzi `master` otwieraj wyłącznie jako release z `development`.
 
-PR musi zawierać:
+Zawartość wymaganego opisu PR:
 
-- opis problemu i rozwiązania,
-- zakres zmian,
-- listę wykonanych testów,
-- wynik coverage i informację o zmianie coverage,
-- ryzyka oraz wpływ na OBD/AI/UI,
-- instrukcję ręcznego testu, jeśli zmiana dotyczy sprzętu lub UI.
+- opis problemu i zastosowanego rozwiązania,
+- zakres zmian (zgodny z checklistą PR template),
+- wykaz wykonanych testów oraz uzyskany wynik coverage,
+- wpływ i potencjalne ryzyka dla modułów OBD, AI oraz UI,
+- procedura testu manualnego w przypadku zmian sprzętowych lub UI.
 
-PR nie może być mergowany, gdy wymagany check CI jest czerwony, testy nie przechodzą albo występują nierozwiązane uwagi review.
+Warunkiem zatwierdzenia i scalenia PR jest zielony status wszystkich checków CI oraz rozwiązanie wszystkich uwag z review.
 
-## 5. Testy i coverage
+## 5. Testy i bramka coverage
 
-- Testy jednostkowe nie mogą wymagać fizycznego adaptera OBD.
-- Połączenie z OBD testuj przez mocki/fake connection.
-- Każdy nowy moduł powinien mieć testy ścieżki poprawnej i błędnej.
-- Kod produkcyjny nie może obniżać coverage bez uzasadnienia w PR.
-- Minimalny cel coverage: 80% dla kodu Python objętego testami.
-- Coverage nie jest wymówką do testowania kodu UI lub integracji sprzętowej wyłącznie jednostkowo; takie przypadki opisz jako testy ręczne/integracyjne.
+- Testy jednostkowe realizuj w pełnej izolacji od sprzętu fizycznego, z użyciem mocków i fake connections.
+- Każdy moduł pokrywaj testami ścieżki pozytywnej oraz obsługi błędów i stanów brzegowych.
+- Utrzymuj pokrycie kodu testami na minimalnym poziomie 80% dla modułów `core` i `services`.
+- Dla kodu UI oraz integracji sprzętowej przygotuj procedurę testów integracyjnych/manualnych.
 
-## 6. CI status checks
+## 6. Status checks w CI
 
-Wymagane checki PR:
+Wymagane automatyczne checki weryfikacyjne:
 
-- `test` — instalacja zależności i pełny pytest,
-- `coverage` — raport coverage i weryfikacja minimum 80%,
-- `build` — utworzenie artefaktu źródłowego.
+- `test` — instalacja zależności i pomyślne wykonanie całego zestawu pytest,
+- `coverage` — potwierdzenie osiągnięcia progu minimum 80% pokrycia,
+- `build` — poprawne wygenerowanie pakietu źródłowego.
 
-Mergowanie jest dozwolone wyłącznie po przejściu wszystkich wymaganych checków. Jeśli CI nie uruchomiło się, agent nie oznacza PR jako gotowego — należy ponowić workflow lub zgłosić problem.
+W przypadku braku automatycznego uruchomienia CI ponów workflow lub zgłoś problem przed uznaniem zadania za zakończone.
 
-## 7. Bezpieczeństwo aplikacji
+## 7. Bezpieczeństwo pojazdu i danych
 
-- Kasowanie DTC wymaga jawnego potwierdzenia użytkownika i zapisu kodów przed operacją.
-- AI może sugerować diagnozę, ale nie może przedstawiać jej jako pewnej bez potwierdzenia.
-- Nie wysyłaj danych pojazdu ani kluczy API do logów.
-- Dynamiczne PID-y muszą przejść walidację odpowiedzi, zakresu i dozwolonego trybu ECU.
+- Kasowanie błędów DTC wykonuj wyłącznie po manualnym potwierdzeniu przez użytkownika na postoju i uprzednim utrwaleniu kodów w logu sesji.
+- Wszystkie analizy AI oznaczaj jako hipotezy pomocnicze wymagające weryfikacji warsztatowej.
+- W logach, telemetrii i zgłoszeniach chroń prywatność: maskuj numery VIN, dane personalne oraz klucze dostępowe.
+- Niestandardowe parametry PID poddawaj ścisłej walidacji pod kątem typu odpowiedzi, dozwolonego zakresu wartości i trybu ECU.
