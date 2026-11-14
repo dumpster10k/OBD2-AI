@@ -1,77 +1,100 @@
-# TODO: wybór modelu AI i hostingu
+# TODO: lokalny model AI na urządzeniu
 
-## Decyzja wstępna
+## Decyzja architektoniczna
 
-Dla MVP wybieramy **hosting zewnętrzny przez API**, a nie model uruchamiany bezpośrednio na telefonie.
+Docelowo aplikacja działa **offline-first**, bez płatnego hostingu, z modelem AI uruchamianym lokalnie na telefonie lub laptopie.
 
-Powód: aplikacja musi najpierw dobrze agregować dane OBD, kody DTC, freeze-frame i historię sesji. Zewnętrzne API daje lepszą jakość odpowiedzi, prostsze aktualizacje modelu i mniejsze wymagania sprzętowe telefonu.
+Nie przechowujemy kluczy API w aplikacji i nie wysyłamy danych pojazdu do chmury. Internet może być używany opcjonalnie wyłącznie do aktualizacji modeli, bazy DTC lub definicji PID-ów po zgodzie użytkownika.
 
-Model AI ma być asystentem diagnostycznym, a nie systemem sterującym ECU. Nie może samodzielnie wykonywać komend kasowania ani komend zapisu do sterowników.
+## Strategia lokalna
 
-## Shortlista modeli z Hugging Face
+Najpierw implementujemy diagnostykę deterministyczną:
 
-Przed wyborem produkcyjnym sprawdzić aktualne licencje, wersje i dostępność:
+1. parser DTC,
+2. lokalna baza kodów i opisów,
+3. reguły bezpieczeństwa,
+4. analiza freeze-frame,
+5. dopiero potem lokalny LLM do wyjaśniania i rozmowy z użytkownikiem.
 
-1. **Qwen2.5-1.5B-Instruct** — kandydat do lokalnego MVP; mały, dobry do klasyfikacji i krótkich objaśnień.
-2. **SmolLM2-1.7B-Instruct** — lekki model lokalny do trybu offline i prostych odpowiedzi.
-3. **Phi-3.5-mini-instruct** — większy model do lepszych odpowiedzi kontekstowych; wymaga więcej pamięci.
-4. **Qwen2.5-3B/7B-Instruct** — wariant serwerowy lub dla mocniejszych urządzeń; lepszy do długich analiz.
-5. **Gemma 3 1B/4B Instruct** — kandydat do porównania jakości i kosztu, po sprawdzeniu licencji oraz obsługi języka polskiego.
+LLM nie podejmuje decyzji o kasowaniu DTC ani nie wysyła komend zapisu do ECU.
 
-To są kandydaci do benchmarku, nie automatyczna rekomendacja wdrożenia. Model musi być oceniony na rzeczywistych kodach DTC i danych telemetrycznych.
+## Kandydaci do benchmarku
 
-## Plan hostingu
+Modele należy pobrać i ocenić zgodnie z aktualną licencją Hugging Face:
 
-### Etap 1 — API zewnętrzne
+1. **Qwen2.5-1.5B-Instruct** — główny kandydat dla Androida; dobry kompromis rozmiaru i jakości.
+2. **SmolLM2-1.7B-Instruct** — alternatywa dla słabszych telefonów.
+3. **Gemma 3 1B** — mały kandydat do porównania jakości i języka polskiego.
+4. **Phi-3.5-mini-instruct** — opcja dla laptopów i mocniejszych telefonów; prawdopodobnie zbyt ciężka jako domyślna wersja Android.
+5. **Qwen2.5-3B-Instruct** — opcja desktopowa lub dla urządzeń z większą pamięcią.
 
-- do modelu wysyłamy tylko znormalizowany kontekst diagnostyczny,
-- klucza API nie przechowujemy w aplikacji mobilnej,
-- aplikacja komunikuje się z własnym backendem/proxy,
-- backend stosuje limity, logowanie bez danych wrażliwych i wersjonowanie promptu,
-- przy braku sieci aplikacja nadal pokazuje surowe dane DTC i reguły bezpieczeństwa.
+To shortlist, a nie ostateczna decyzja. Przed użyciem trzeba sprawdzić licencję, wymagania i jakość języka polskiego.
 
-### Etap 2 — model lokalny/offline
+## Format i uruchamianie
 
-- kwantyzowany model 1B–3B w formacie GGUF lub rozwiązaniu wspieranym przez Android,
-- inference przez llama.cpp/MLC/LiteRT — wybór po benchmarku na docelowych telefonach,
-- lokalny model obsługuje krótkie objaśnienia, klasyfikację i fallback offline,
-- brak wysyłania danych auta do sieci w trybie prywatnym.
+Preferowany format modelu:
 
-### Etap 3 — hybryda
+```text
+GGUF + kwantyzacja Q4_K_M lub podobna
+```
 
-- reguły bezpieczeństwa i podstawowa klasyfikacja lokalnie,
-- cięższa analiza przez API tylko po zgodzie użytkownika,
-- możliwość wyłączenia chmury w ustawieniach.
+Kierunek implementacji:
+
+- Android: natywny runtime wspierający Android/ARM64, np. llama.cpp lub MLC-LLM,
+- Windows/Linux: llama.cpp, llama-cpp-python lub podobny runtime,
+- Python/Kivy: adapter `LocalDiagnosticAI`, który komunikuje się z runtime bez blokowania UI.
+
+Nie zakładamy, że `llama-cpp-python` będzie łatwo kompilować się bezpośrednio w każdym APK. Runtime powinien być izolowany za interfejsem, aby można go było zmienić bez przebudowy logiki diagnostycznej.
+
+## Pamięć i tryby urządzeń
+
+| Tryb | Model | Zastosowanie |
+|---|---|---|
+| Android Lite | 1B–1.5B, Q4 | krótkie objaśnienia DTC, pytania użytkownika |
+| Android Standard | 1.5B–3B, Q4 | analiza kontekstu i prosty dialog |
+| Laptop | 3B–7B, Q4/Q5 | dłuższe raporty i analiza historii |
+| Fallback | brak LLM | reguły, baza DTC i szablony odpowiedzi |
+
+Model nie musi analizować surowego strumienia w każdej próbce. Telemetria powinna być agregowana lokalnie do cech, np. średnia, minimum, maksimum, trend i zdarzenia.
+
+## Prywatność
+
+- dane OBD pozostają na urządzeniu,
+- historia diagnostyki jest lokalna w SQLite,
+- logi nie zawierają VIN ani pełnych danych pojazdu bez zgody,
+- aktualizacja modelu jest ręczna lub podpisana,
+- aplikacja działa bez internetu,
+- użytkownik może usunąć model i całą historię.
 
 ## Wymagania akceptacyjne
 
-- [ ] Benchmark minimum 100 przypadków DTC.
-- [ ] Testy języka polskiego i angielskiego.
-- [ ] Ocena: poprawność kodu, ostrożność zaleceń, halucynacje, czas odpowiedzi i koszt.
+- [ ] Aplikacja wykonuje podstawową analizę bez internetu.
+- [ ] Fallback reguł działa bez zainstalowanego LLM.
+- [ ] Test benchmarkowy zawiera minimum 100 przypadków DTC.
 - [ ] Model nie przedstawia hipotezy jako pewnej diagnozy.
-- [ ] Model nie zaleca jazdy przy potencjalnie krytycznych objawach.
-- [ ] Model nie generuje bezpośrednio komend zapisu/kodowania ECU.
-- [ ] Fallback działa bez internetu.
-- [ ] Klucz API znajduje się wyłącznie na backendzie.
-- [ ] Sprawdzona licencja modelu i warunki komercyjnego użycia.
+- [ ] Model nie generuje komend zapisu/kodowania ECU.
+- [ ] Triage krytycznych przypadków wykonują reguły, nie sam LLM.
+- [ ] Zmierzono czas odpowiedzi, RAM, temperaturę i baterię.
+- [ ] APK działa na minimum dwóch urządzeniach ARM64.
+- [ ] Sprawdzono licencję i możliwość dystrybucji modelu.
+- [ ] Model jest dystrybuowany osobno lub jako opcjonalny pakiet, aby nie powiększać podstawowego APK.
 
-## Proponowany interfejs
+## Następny krok
+
+Zaimplementować interfejs:
 
 ```python
 class DiagnosticAI:
     def analyze(self, vehicle_context: dict) -> dict:
-        """Zwraca ustrukturyzowaną hipotezę, pilność i kolejne kroki."""
         raise NotImplementedError
 ```
 
-Implementacje:
+oraz trzy implementacje:
 
 ```text
-ExternalDiagnosticAI  # backend/API
-LocalDiagnosticAI     # model na urządzeniu
-RuleBasedFallback     # działanie bez sieci
+RuleBasedDiagnosticAI  # zawsze dostępny, bez modelu
+LocalDiagnosticAI      # model na urządzeniu
+HybridDiagnosticAI     # opcjonalnie później, bez wymaganego hostingu
 ```
 
-## Następny krok
-
-Przygotować benchmark i adapter `DiagnosticAI`, a następnie porównać Qwen2.5-1.5B, SmolLM2-1.7B oraz Phi-3.5-mini na tych samych danych. Decyzję produkcyjną podjąć dopiero po pomiarach jakości i czasu odpowiedzi.
+Pierwszy cel: działający `RuleBasedDiagnosticAI` i benchmark lokalny, a dopiero potem integracja Qwen2.5-1.5B lub SmolLM2.
