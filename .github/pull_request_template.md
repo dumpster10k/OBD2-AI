@@ -4,9 +4,9 @@
 
 ## Zakres
 
-- [ ] Kod
-- [ ] Testy
-- [ ] Dokumentacja
+- [x] Kod
+- [x] Testy
+- [x] Dokumentacja
 - [ ] CI/CD
 
 ## Testy
