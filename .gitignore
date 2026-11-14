@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Agent runner and scripts
+.start_agent.sh
+src/
