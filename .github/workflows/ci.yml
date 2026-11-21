@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build source bundle
-        run: zip -r ai-car-doctor-source.zip core services ui tests requirements.txt README.md AGENTS.md CONTRIBUTING.md
+        run: zip -r ai-car-doctor-source.zip core services ui tests docs requirements.txt README.md AGENTS.md CONTRIBUTING.md
       - uses: actions/upload-artifact@v4
         with:
           name: ai-car-doctor-source

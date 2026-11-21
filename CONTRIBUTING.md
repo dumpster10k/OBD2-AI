@@ -1,19 +1,13 @@
 # Contributing
 
-Szczegółowe zasady dla agentów i deweloperów znajdują się w [`AGENTS.md`](AGENTS.md).
+Zasady wytwarzania kodu, konwencje commitów oraz architekturę opisuje dokument [`AGENTS.md`](AGENTS.md).
 
-## Minimalny proces
+## Procedura kontrybucji
 
-```bash
-git fetch origin
-git checkout development
-git pull --ff-only origin development
-git checkout -b feature/my-change
-python -m pip install -r requirements.txt
-PYTHONPATH=. python -m pytest -q --cov=. --cov-report=term-missing
-git add .
-git commit -m "feat: opis zmiany"
-git push -u origin feature/my-change
-```
-
-Następnie otwórz PR do `development` i poczekaj na wymagane status checks.
+1. Utwórz gałąź roboczą (`feature/*`, `fix/*`, `docs/*`) z aktualnego stanu `development`.
+2. Zaimplementuj zmiany wraz z testami jednostkowymi.
+3. Wykonaj lokalną weryfikację jakości:
+   ```bash
+   PYTHONPATH=. python -m pytest --cov=core --cov=services --cov-report=term-missing --cov-fail-under=80
+   ```
+4. Otwórz Pull Request do gałęzi `development`, wypełniając szablon zgłoszenia.

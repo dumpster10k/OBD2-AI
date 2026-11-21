@@ -34,14 +34,18 @@ OBD-II Bluetooth / ELM327
 .
 ├── core/
 │   └── obd_client.py
+├── docs/
+│   └── diagnostic_ai.md
 ├── services/
 │   ├── ai_engine.py
+│   ├── diagnostic_ai.py
 │   └── sensor_manager.py
 ├── ui/
 │   └── main.py
 ├── tests/
 │   ├── test_obd.py
 │   ├── test_ai.py
+│   ├── test_diagnostic_ai.py
 │   └── test_sensor_manager.py
 ├── .github/workflows/ci.yml
 ├── AGENTS.md
