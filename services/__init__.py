@@ -53,6 +53,7 @@ from services.telemetry_metrics import (
     evaluate_metric_status,
     value_to_gauge_angle,
 )
+from services.vehicle_profiler import ECUIdentifier, VehicleProfile, VehicleProfiler, VINDecoder
 
 __all__ = [
     "AIEngine",
@@ -102,4 +103,8 @@ __all__ = [
     "ActuatorSafetyPreflight",
     "ActuatorCatalog",
     "ActuatorTestRunner",
+    "VehicleProfile",
+    "VINDecoder",
+    "ECUIdentifier",
+    "VehicleProfiler",
 ]
