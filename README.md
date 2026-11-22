@@ -24,6 +24,8 @@ OBD-II Bluetooth / ELM327
    core/obd_client.py       komunikacja z ECU i DTC
           │
           ├── services/ai_engine.py       analiza i rekomendacje AI
+          ├── services/llm_engine.py      lekki lokalny LLM (offline-first GGUF)
+          ├── services/speech_service.py  asystent mowy (STT Whisper, TTS Piper)
           ├── services/sensor_manager.py  niestandardowe czujniki/PID-y
           └── ui/main.py                   interfejs Kivy
 ```
@@ -35,18 +37,24 @@ OBD-II Bluetooth / ELM327
 ├── core/
 │   └── obd_client.py
 ├── docs/
+│   ├── ai_models.md
+│   ├── AI_MODEL_TODO.md
 │   └── diagnostic_ai.md
 ├── services/
 │   ├── ai_engine.py
 │   ├── diagnostic_ai.py
-│   └── sensor_manager.py
+│   ├── llm_engine.py
+│   ├── sensor_manager.py
+│   └── speech_service.py
 ├── ui/
 │   └── main.py
 ├── tests/
 │   ├── test_obd.py
 │   ├── test_ai.py
 │   ├── test_diagnostic_ai.py
-│   └── test_sensor_manager.py
+│   ├── test_llm_engine.py
+│   ├── test_sensor_manager.py
+│   └── test_speech_service.py
 ├── .github/workflows/ci.yml
 ├── AGENTS.md
 ├── CONTRIBUTING.md

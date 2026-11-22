@@ -68,33 +68,27 @@ Model nie musi analizować surowego strumienia w każdej próbce. Telemetria pow
 
 ## Wymagania akceptacyjne
 
-- [ ] Aplikacja wykonuje podstawową analizę bez internetu.
-- [ ] Fallback reguł działa bez zainstalowanego LLM.
+- [x] Aplikacja wykonuje podstawową analizę bez internetu (`RuleBasedDiagnosticAI`).
+- [x] Fallback reguł działa bez zainstalowanego LLM.
+- [x] Zaimplementowano interfejs `LocalLLMEngine` i runner modeli GGUF / mock.
+- [x] Zintegrowano modele mowy offline (`SpeechService`, STT Whisper/Vosk, TTS Piper).
+- [x] Zbudowano asystenta głosowego `VoiceDiagnosticAssistant` z blokadą kasowania błędów głosem.
+- [x] Model nie przedstawia hipotezy jako pewnej diagnozy (wymuszony disclaimer).
+- [x] Model nie generuje komend zapisu/kodowania ECU.
+- [x] Triage krytycznych przypadków wykonują reguły, nie sam LLM.
 - [ ] Test benchmarkowy zawiera minimum 100 przypadków DTC.
-- [ ] Model nie przedstawia hipotezy jako pewnej diagnozy.
-- [ ] Model nie generuje komend zapisu/kodowania ECU.
-- [ ] Triage krytycznych przypadków wykonują reguły, nie sam LLM.
-- [ ] Zmierzono czas odpowiedzi, RAM, temperaturę i baterię.
+- [ ] Zmierzono czas odpowiedzi, RAM, temperaturę i baterię na urządzeniu mobilnym.
 - [ ] APK działa na minimum dwóch urządzeniach ARM64.
-- [ ] Sprawdzono licencję i możliwość dystrybucji modelu.
 - [ ] Model jest dystrybuowany osobno lub jako opcjonalny pakiet, aby nie powiększać podstawowego APK.
 
-## Następny krok
+## Zrealizowana architektura
 
-Zaimplementować interfejs:
-
-```python
-class DiagnosticAI:
-    def analyze(self, vehicle_context: dict) -> dict:
-        raise NotImplementedError
-```
-
-oraz trzy implementacje:
+Zaimplementowano architekturę warstwową:
 
 ```text
-RuleBasedDiagnosticAI  # zawsze dostępny, bez modelu
-LocalDiagnosticAI      # model na urządzeniu
-HybridDiagnosticAI     # opcjonalnie później, bez wymaganego hostingu
+RuleBasedDiagnosticAI    # silnik regułowy (zawsze dostępny)
+LocalDiagnosticAI        # adapter lokalnego modelu AI
+LocalLLMEngine           # obsługa kompaktowych modeli GGUF (SmolLM2-360M, Qwen2.5-0.5B/1.5B)
+SpeechService            # obsługa mowy STT (Whisper/Vosk) oraz TTS (Piper)
+VoiceDiagnosticAssistant # bezdotykowy asystent kierowcy
 ```
-
-Pierwszy cel: działający `RuleBasedDiagnosticAI` i benchmark lokalny, a dopiero potem integracja Qwen2.5-1.5B lub SmolLM2.
