@@ -168,7 +168,11 @@ class RuleBasedDiagnosticAI(DiagnosticAI):
             findings.append(finding)
 
         # 2. Triage telemetryczny (reguły fizyczne i krytyczne)
-        coolant = vehicle_context.get("coolant_temp_c") or vehicle_context.get("coolant_c")
+        coolant = (
+            vehicle_context.get("coolant_temp_c")
+            or vehicle_context.get("coolant_c")
+            or vehicle_context.get("coolant_temp")
+        )
         if coolant is not None:
             if coolant >= 115:
                 safety_warnings.append(
@@ -181,7 +185,7 @@ class RuleBasedDiagnosticAI(DiagnosticAI):
                     f"OSTRZEŻENIE: Podwyższona temperatura cieczy ({coolant}°C). Obserwuj wskazania i wentylatory."
                 )
 
-        oil_temp = vehicle_context.get("oil_temp_c")
+        oil_temp = vehicle_context.get("oil_temp_c") or vehicle_context.get("oil_temp")
         if oil_temp is not None and oil_temp >= 130:
             safety_warnings.append(
                 f"KRYTYCZNE: Temperatura oleju silnikowego ({oil_temp}°C) grozi zerwaniem filmu olejowego!"
@@ -285,9 +289,13 @@ class LocalDiagnosticAI(DiagnosticAI):
         self,
         fallback_engine: Optional[DiagnosticAI] = None,
         model_runner: Optional[Callable[[str], str]] = None,
+        llm_engine: Optional[Any] = None,
     ):
         self.fallback = fallback_engine or RuleBasedDiagnosticAI()
+        self.llm_engine = llm_engine
         self.model_runner = model_runner
+        if self.llm_engine and not self.model_runner:
+            self.model_runner = lambda prompt: self.llm_engine.ask(prompt)
 
     def analyze(self, vehicle_context: dict[str, Any]) -> DiagnosisReport:
         # Zawsze najpierw przeprowadzamy ocenę deterministyczną
