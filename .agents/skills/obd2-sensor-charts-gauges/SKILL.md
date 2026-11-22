@@ -109,6 +109,7 @@ if KIVY_AVAILABLE:
 else:
     Widget = WidgetStub
 
+
 class DialGaugeWidget(Widget):
     def update_value(self, val: float):
         if not KIVY_AVAILABLE:

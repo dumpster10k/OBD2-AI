@@ -102,18 +102,29 @@ from services.actuator_testing import (
     ActuatorTestResult,
     ActuatorTestRunner,
 )
+from services.agent_advisor import AgentAdvisor
 from services.ai_engine import AIEngine
 from services.diagnostic_ai import DiagnosisReport
+from services.diagnostic_knowledge_base import (
+    DiagnosticKnowledgeBase,
+    DiagnosticLookupResult,
+    DiagnosticProcedure,
+)
 from services.llm_engine import (
     DISCLAIMER_TEXT,
     RECOMMENDED_LLM_MODELS,
     LLMModelSpec,
+    LMStudioBackend,
 )
+from services.sensor_manager import SensorManager
 from services.speech_service import (
     RECOMMENDED_SPEECH_MODELS,
     SpeechModelSpec,
 )
+from services.telemetry_harvester import TelemetryHarvester
 from services.telemetry_logger import TelemetryLogger
+from services.user_preferences import AgentAnalysisMode, UserPreferencesManager
+from services.vehicle_profiler import VehicleProfile, VehicleProfiler
 
 logger = logging.getLogger(__name__)
 
@@ -511,6 +522,23 @@ class DashboardController:
             obd_client=self.obd,
             telemetry_logger=self.telemetry_logger,
         )
+        self.sensor_manager: SensorManager = SensorManager.with_full_database()
+        self.vehicle_profile: VehicleProfile = VehicleProfiler.detect_profile()
+        self.preferences_mgr: UserPreferencesManager = UserPreferencesManager()
+        self.knowledge_base: DiagnosticKnowledgeBase = DiagnosticKnowledgeBase()
+        self.agent_advisor: AgentAdvisor = AgentAdvisor(
+            llm_engine=getattr(self.ai, "llm_engine", None),
+            preferences_manager=self.preferences_mgr,
+        )
+        self.telemetry_harvester: TelemetryHarvester = TelemetryHarvester(
+            obd_client=self.obd,
+            telemetry_logger=self.telemetry_logger,
+            sensor_manager=self.sensor_manager,
+            sampling_interval_sec=self.preferences_mgr.profile.harvest_interval_sec,
+        )
+        self.telemetry_harvester.register_callback(self._on_harvester_sample)
+        self.latest_agent_alert: str = ""
+        self._init_lm_studio_if_available()
 
     def list_actuator_tests(self, category: Optional[str] = None) -> list[ActuatorTestDefinition]:
         """Zwraca listę dostępnych procedur testowania elementów wykonawczych."""
@@ -572,7 +600,8 @@ class DashboardController:
         success = self.obd.connect(port=portstr, baudrate=baud)
         if success:
             self.refresh_telemetry()
-            msg = f"Połączono pomyślnie ({portstr or 'Auto'}, {baud or 'Auto'} baud)"
+            self.detect_and_apply_vehicle_profile()
+            msg = f"Połączono pomyślnie ({portstr or 'Auto'}). Wykryto: {self.vehicle_profile.summary_description}"
         else:
             msg = f"Brak połączenia z {portstr or 'Auto'} (sprawdź zasilanie, Bluetooth lub port USB)"
 
@@ -625,7 +654,33 @@ class DashboardController:
         self.simulated_telemetry = dict(scen["telemetry"])
         self.telemetry = dict(self.simulated_telemetry)
         self.record_telemetry_point(self.telemetry)
+
+        # Dopasowanie profilu pojazdu dla scenariusza symulacji
+        if scenario_key == "lean_mix":
+            self.detect_and_apply_vehicle_profile(vin="WVWZZZ1JZ3W123456", ecu_id="06A906033 BSE 1.6")
+        elif scenario_key == "misfire":
+            self.detect_and_apply_vehicle_profile(vin="WAUZZZ8E34A123456", ecu_id="06B906018 BFB 1.8T")
+        elif scenario_key == "overheat":
+            self.detect_and_apply_vehicle_profile(vin="WAUZZZ8E13A123456", ecu_id="038906019FP AVF 1.9 TDI")
+
         return scen
+
+    def detect_and_apply_vehicle_profile(
+        self, vin: Optional[str] = None, ecu_id: Optional[str] = None
+    ) -> VehicleProfile:
+        """Wykrywa profil pojazdu na podstawie VIN / ECU oraz konfiguruje czujniki."""
+        get_vin_fn = getattr(self.obd, "get_vin", None)
+        get_ecu_fn = getattr(self.obd, "get_ecu_name", None)
+        v_vin = vin if vin is not None else (get_vin_fn() if callable(get_vin_fn) else None)
+        v_ecu = ecu_id if ecu_id is not None else (get_ecu_fn() if callable(get_ecu_fn) else None)
+
+        self.vehicle_profile = VehicleProfiler.detect_profile(vin=v_vin, ecu_id=v_ecu)
+        logger.info(
+            "Aktywowano profil pojazdu: %s (%d aktywnych czujników)",
+            self.vehicle_profile.summary_description,
+            len(self.vehicle_profile.active_sensor_names),
+        )
+        return self.vehicle_profile
 
     def refresh_telemetry(self) -> dict[str, Any]:
         """Pobiera i aktualizuje bieżące parametry telemetryczne pojazdu."""
@@ -668,7 +723,57 @@ class DashboardController:
 
         self.latest_report = self.ai.analyze_context(vehicle_context)
         self.dtc_clear_pending = False
+
+        # Automatyczne utrwalenie ramki zamrożonej (Freeze Frame) w bazie SQLite
+        if self.telemetry_logger and dtc_str_list:
+            sess_id = self.current_session_id or "auto_freeze_frame"
+            for code in dtc_str_list:
+                try:
+                    self.telemetry_logger.log_dtc(
+                        session_id=sess_id,
+                        code=code,
+                        telemetry_snapshot=self.telemetry,
+                    )
+                except Exception:
+                    pass
+
         return self.current_dtcs, self.latest_report
+
+    def get_microphone_status(self) -> dict[str, Any]:
+        """Zwraca informacje o dostępności i stanie fizycznego mikrofonu."""
+        if hasattr(self, "ai") and hasattr(self.ai, "voice") and hasattr(self.ai.voice, "speech"):
+            return self.ai.voice.speech.get_microphone_status()
+        return {
+            "is_available": False,
+            "is_live": False,
+            "device_name": "Brak",
+            "message": "Serwis mowy niedostępny",
+        }
+
+    def explain_sensor_location(self, sensor_name_or_code: str) -> str:
+        """Zwraca opis gdzie fizycznie pod maską oraz w jakich grupach pomiarowych szukać danego czujnika."""
+        return self.knowledge_base.explain_sensor_location(sensor_name_or_code)
+
+    def lookup_dtc_knowledge(self, code: str, allow_web: bool = False) -> DiagnosticLookupResult:
+        """Wyszukuje szczegółowe biuletyny diagnostyczne i procedury naprawcze dla zadanego kodu DTC.
+
+        Jeśli kod nie istnieje w lokalnej bazie, generuje zapytanie o zgodę użytkownika na przeszukanie WWW.
+        """
+        ctx = {
+            "vin": self.vehicle_profile.vin,
+            "engine_code": self.vehicle_profile.engine_code,
+            "brand": self.vehicle_profile.brand,
+        }
+        return self.knowledge_base.lookup_dtc(code, vehicle_context=ctx, allow_web_search=allow_web)
+
+    def get_diagnostic_procedure(self, code_or_id: str) -> Optional[DiagnosticProcedure]:
+        """Zwraca gotowy schemat procedury krok po kroku powiązany z usterką."""
+        from services.diagnostic_knowledge_base import DiagnosticProcedureRegistry
+
+        proc = DiagnosticProcedureRegistry.get_procedure(code_or_id)
+        if not proc:
+            proc = DiagnosticProcedureRegistry.find_by_dtc(code_or_id)
+        return proc
 
     def request_clear_dtc(self) -> dict[str, Any]:
         """Inicjuje procedurę kasowania błędów DTC pod warunkiem postoju pojazdu (wymóg AGENTS.md)."""
@@ -744,6 +849,57 @@ class DashboardController:
         """Anuluje oczekujące potwierdzenie kasowania."""
         self.dtc_clear_pending = False
 
+    def _init_lm_studio_if_available(self) -> None:
+        """Próbuje podłączyć aktywny serwer LM Studio dla modelu qwen3.5-9b-mtp."""
+        try:
+            lm_backend = LMStudioBackend(model_name="qwen3.5-9b-mtp")
+            if lm_backend.is_available():
+                if hasattr(self.ai, "llm_engine") and self.ai.llm_engine:
+                    self.ai.llm_engine.set_backend(lm_backend)
+                    spec = RECOMMENDED_LLM_MODELS.get("qwen3.5-9b-mtp")
+                    if spec:
+                        self.ai.llm_engine.model_spec = spec
+                        self.current_model_spec = spec
+                self.model_backend_status = "Aktywny (LM Studio: qwen3.5-9b-mtp)"
+                logger.info("Połączono z LM Studio (qwen3.5-9b-mtp na %s)", lm_backend.endpoint)
+        except Exception as e:
+            logger.debug("LM Studio nie jest dostępne (%s). Pozostawiono backend domyślny.", e)
+
+    def _on_harvester_sample(self, sample: dict[str, Any]) -> None:
+        """Obsługuje nową próbkę z wątku zbierającego telemetrię."""
+        self.telemetry.update(sample)
+        self.record_telemetry_point(sample)
+        import time
+
+        alert = self.agent_advisor.process_sample(sample, time.time())
+        if alert:
+            self.latest_agent_alert = alert
+            if self.preferences_mgr.profile.voice_alerts_during_drive:
+                self.voice_status_text = f"🚨 {alert}"
+
+    def set_agent_mode(self, mode: AgentAnalysisMode | str, remember: bool = False) -> None:
+        """Zmienia tryb pracy agenta (LIVE / POST_TRIP_ECO / ASK_USER)."""
+        self.agent_advisor.set_mode(mode, remember=remember)
+
+    def get_agent_mode(self) -> str:
+        """Zwraca aktywny tryb pracy agenta."""
+        return self.agent_advisor.mode.value
+
+    def start_telemetry_harvesting(self, session_id: Optional[str] = None) -> None:
+        """Uruchamia ciągłe próbkowanie i zapis parametrów w tle."""
+        target_session = session_id or self.current_session_id
+        if not target_session and self.is_logging:
+            target_session = self.start_telemetry_logging()
+        self.telemetry_harvester.start(session_id=target_session)
+
+    def stop_telemetry_harvesting(self) -> None:
+        """Zatrzymuje ciągłe próbkowanie w tle."""
+        self.telemetry_harvester.stop()
+
+    def generate_post_trip_report(self) -> str:
+        """Generuje raport podsumowujący przejazd (szczególnie przydatny w trybie EKO)."""
+        return self.agent_advisor.generate_post_trip_report()
+
     def start_telemetry_logging(self, vehicle_name: str = "Pojazd") -> str:
         """Rozpoczyna rejestrację próbek telemetrii w bazie SQLite."""
         initial_dtcs = [str(c[0] if isinstance(c, (list, tuple)) else c) for c in self.current_dtcs]
@@ -756,6 +912,7 @@ class DashboardController:
 
     def stop_telemetry_logging(self) -> None:
         """Zatrzymuje rejestrację telemetrii."""
+        self.stop_telemetry_harvesting()
         if self.current_session_id:
             final_dtcs = [str(c[0] if isinstance(c, (list, tuple)) else c) for c in self.current_dtcs]
             self.telemetry_logger.end_session(self.current_session_id, final_dtcs=final_dtcs)
@@ -1438,8 +1595,14 @@ class CarDoctorUI(BoxLayout):
         self.voice_card.add_widget(voice_live_row)
 
         # Etykiety statusu i odpowiedzi asystenta
+        mic_info = self.controller.get_microphone_status()
+        init_mic_msg = (
+            f"Gotowy - mikrofon aktywny ({mic_info['device_name']})"
+            if mic_info.get("is_live")
+            else "Gotowy (mikrofon niedostępny na PC - wpisz pytanie w polu tekstowym)"
+        )
         self.voice_status_label = Label(
-            text="Gotowy (naciśnij nagrywanie lub wybierz szybką komendę)",
+            text=init_mic_msg,
             font_size="11sp",
             size_hint_y=None,
             height=20,
@@ -1520,6 +1683,38 @@ class CarDoctorUI(BoxLayout):
         self.btn_export_csv.bind(on_press=self.on_export_csv)
         logging_row.add_widget(self.btn_export_csv)
         actions_card.add_widget(logging_row)
+
+        # Rząd trybu pracy asystenta AI (Live vs EKO bateria) oraz raportu po trasie
+        agent_mode_row = BoxLayout(orientation="horizontal", spacing=8, size_hint_y=None, height=44)
+
+        mode_titles = {
+            "live": "🔴 Agent: Na żywo",
+            "post_trip_eco": "🔋 Agent: EKO (Bateria)",
+            "ask_user": "❓ Agent: Pytaj",
+        }
+        current_m = self.controller.get_agent_mode()
+        self.btn_agent_mode = Button(
+            text=mode_titles.get(current_m, "🤖 Agent: Tryb"),
+            font_size="12sp",
+            bold=True,
+            size_hint_x=0.55,
+            background_normal="",
+            background_color=COLOR_SUCCESS if current_m == "post_trip_eco" else COLOR_PRIMARY,
+        )
+        self.btn_agent_mode.bind(on_press=self.on_toggle_agent_mode)
+        agent_mode_row.add_widget(self.btn_agent_mode)
+
+        self.btn_post_trip_report = Button(
+            text="📊 Raport z trasy",
+            font_size="12sp",
+            bold=True,
+            size_hint_x=0.45,
+            background_normal="",
+            background_color=(0.22, 0.28, 0.38, 1.0),
+        )
+        self.btn_post_trip_report.bind(on_press=self.on_generate_post_trip_report)
+        agent_mode_row.add_widget(self.btn_post_trip_report)
+        actions_card.add_widget(agent_mode_row)
 
         self.clear_btn = Button(
             text="🗑️ Skasuj kody błędów DTC",
@@ -1873,6 +2068,13 @@ class CarDoctorUI(BoxLayout):
 
     def on_voice_record_button(self, _btn=None) -> None:
         """Nagrywa mowę z mikrofonu i przetwarza przez STT -> Analiza -> TTS."""
+        mic_status = self.controller.get_microphone_status()
+        if not mic_status.get("is_live"):
+            self.voice_status_label.text = "Mikrofon fizyczny niedostępny (użyj pola obok lub zainstaluj sounddevice)"
+            self.status_label.text = "Głos: Brak fizycznego mikrofonu"
+            return
+
+        self.voice_status_label.text = "🔴 Nagrywanie dźwięku (3s)..."
         query, answer, _ = self.controller.record_and_handle_voice()
         self.voice_status_label.text = f'Rozpoznano mowę: "{query}"'
         self.voice_response_label.text = answer
@@ -1898,10 +2100,39 @@ class CarDoctorUI(BoxLayout):
         self.status_label.text = f"Głos: {query}"
         self.report_summary_label.text = f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
 
+    def on_toggle_agent_mode(self, _btn=None) -> None:
+        """Przełącza tryb pracy asystenta AI między LIVE, POST_TRIP_ECO i ASK_USER."""
+        cycle = ["live", "post_trip_eco", "ask_user"]
+        curr = self.controller.get_agent_mode()
+        idx = cycle.index(curr) if curr in cycle else 0
+        nxt = cycle[(idx + 1) % len(cycle)]
+        self.controller.set_agent_mode(nxt, remember=True)
+
+        mode_titles = {
+            "live": "🔴 Agent: Na żywo",
+            "post_trip_eco": "🔋 Agent: EKO (Bateria)",
+            "ask_user": "❓ Agent: Pytaj",
+        }
+        self.btn_agent_mode.text = mode_titles.get(nxt, "🤖 Agent: Tryb")
+        if nxt == "post_trip_eco":
+            self.btn_agent_mode.background_color = COLOR_SUCCESS
+        elif nxt == "live":
+            self.btn_agent_mode.background_color = COLOR_PRIMARY
+        else:
+            self.btn_agent_mode.background_color = (0.22, 0.28, 0.38, 1.0)
+        self.status_label.text = f"Przełączono tryb agenta na: {nxt}"
+
+    def on_generate_post_trip_report(self, _btn=None) -> None:
+        """Generuje podsumowanie przejazdu i prezentuje je na karcie raportu."""
+        report = self.controller.generate_post_trip_report()
+        self.report_summary_label.text = report
+        self.status_label.text = "Wygenerowano raport podsumowujący trasę"
+
     def on_toggle_logging(self, _btn=None) -> None:
         """Włącza lub wyłącza nagrywanie próbek telemetrii do bazy SQLite."""
         if not self.controller.is_logging:
             sess_id = self.controller.start_telemetry_logging()
+            self.controller.start_telemetry_harvesting(session_id=sess_id)
             self.btn_toggle_logging.text = "🔴 Rejestrowanie WŁ"
             self.btn_toggle_logging.background_color = COLOR_DANGER
             self.status_label.text = f"Rozpoczęto rejestrację trasy ({sess_id})"
@@ -1910,6 +2141,11 @@ class CarDoctorUI(BoxLayout):
             self.btn_toggle_logging.text = "⏺️ Rejestruj trasę: WYŁ"
             self.btn_toggle_logging.background_color = (0.18, 0.22, 0.30, 1.0)
             self.status_label.text = "Zatrzymano rejestrację telemetrii"
+            # Jeśli byliśmy w trybie EKO, automatycznie podsumujmy trasę dla kierowcy
+            if self.controller.get_agent_mode() == "post_trip_eco":
+                report = self.controller.generate_post_trip_report()
+                self.report_summary_label.text = report
+                self.status_label.text = "Zatrzymano rejestrację telemetrii (raport trasy gotowy)"
 
     def on_export_csv(self, _btn=None) -> None:
         """Eksportuje zarejestrowaną sesję telemetrii do pliku CSV."""

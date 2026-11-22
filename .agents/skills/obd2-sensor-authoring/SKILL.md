@@ -17,15 +17,15 @@ Każdy sensor w systemie opisany jest klasą `SensorDefinition`:
 from services.sensor_manager import SensorDefinition, SensorManager
 
 sensor = SensorDefinition(
-    name="Engine Oil Temp",           # Unikalna, czytelna nazwa parametru
-    mode="22",                        # Tryb OBD-II ("01" = standard, "22" = rozszerzony/UDS)
-    pid="1126",                       # Identyfikator parametru (Hex bez 0x)
-    formula="(A*256 + B)/10",         # Formuła matematyczna dekodowania bajtów
-    unit="°C",                        # Jednostka fizyczna
-    min_value=-40.0,                  # Minimalna dopuszczalna wartość (walidacja)
-    max_value=160.0,                  # Maksymalna dopuszczalna wartość (walidacja)
+    name="Engine Oil Temp",  # Unikalna, czytelna nazwa parametru
+    mode="22",  # Tryb OBD-II ("01" = standard, "22" = rozszerzony/UDS)
+    pid="1126",  # Identyfikator parametru (Hex bez 0x)
+    formula="(A*256 + B)/10",  # Formuła matematyczna dekodowania bajtów
+    unit="°C",  # Jednostka fizyczna
+    min_value=-40.0,  # Minimalna dopuszczalna wartość (walidacja)
+    max_value=160.0,  # Maksymalna dopuszczalna wartość (walidacja)
     description="Temperatura oleju silnikowego",
-    ecu_target="7E0",                 # Opcjonalny docelowy adres modułu (domyślnie 7E0 silnik)
+    ecu_target="7E0",  # Opcjonalny docelowy adres modułu (domyślnie 7E0 silnik)
 )
 ```
 
@@ -63,7 +63,24 @@ Formuły w `SensorManager` są bezpiecznie parsowane przez AST (brak ryzykownego
 
 ---
 
-## 4. Procedura dodania nowego czujnika przez agenta
+## 4. Fabryki i dostęp do wbudowanych baz czujników
+
+W module `services.sensor_manager` i `services.sensor_database` dostępne są dedykowane fabryki:
+
+- `SensorManager.with_standard_obd2()` — ładuje komplet parametrów SAE J1979 Mode 01 (od 1996 r.): RPM, prędkość, ECT, MAP, MAF, IAT, TPS, STFT/LTFT, ciśnienie na szynie Common Rail, napięcie modułu, poziom paliwa.
+- `SensorManager.with_vag_sensors()` — ładuje parametry dedykowane dla grupy VAG (Audi, VW, Skoda, Seat):
+  * **KWP1281 / KWP2000 bloki pomiarowe (Measuring Blocks)**: G62, kąt synchronizacji wałka rozrządu (Torsion Value w TDI PD), zadane vs rzeczywiste doładowanie (mbar), wysterowanie N75, cofanie zapłonu przy spalaniu stukowym (Knock Retard Cyl 1-4), adaptacja lambda addytywna i multiplikatywna (Grupa 032), nastawnik VVT.
+  * **UDS / Extended PIDs (Mode 22)**: temperatura oleju silnikowego, ciśnienie doładowania (bar), temperatura ATF i sprzęgieł DSG, masa sadzy i popiołu DPF, różnica ciśnień DPF (Delta-P), temperatury EGT (przed turbiną i DPF).
+- `SensorManager.with_full_database()` — ładuje połączoną bazę czujników standardowych i VAG.
+
+Metody wyszukiwania i filtrowania:
+- `manager.get_by_pid("0C", mode="01")`
+- `manager.get_by_short_name("VAG_TORSION")`
+- `manager.find_sensors(vendor="VAG", category="turbo")`
+
+---
+
+## 5. Procedura dodania nowego czujnika przez agenta
 
 Gdy użytkownik prosi o dodanie nowego sensora (np. ciśnienie paliwa CR):
 
@@ -96,7 +113,7 @@ Gdy użytkownik prosi o dodanie nowego sensora (np. ciśnienie paliwa CR):
 
 ---
 
-## 5. Reguły bezpieczeństwa (AGENTS.md pkt 7)
+## 6. Reguły bezpieczeństwa (AGENTS.md pkt 7)
 
 - **Ścisła walidacja typu i zakresu**: Zawsze definiuj `min_value` i `max_value`, aby wykluczyć uszkodzone ramki lub błędy transmisji szyny CAN.
 - **Niestandardowe parametry PID**: Przed dodaniem sensora upewnij się, że tryb (`mode`) nie jest trybem diagnostycznym modyfikującym pamięć ECU (np. brak komend zapisu Mode 2E/3D w warstwie odczytu telemetrii).

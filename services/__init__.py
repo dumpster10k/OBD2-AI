@@ -32,9 +32,11 @@ from services.llm_engine import (
     LocalLLMEngine,
     MockLLMBackend,
 )
+from services.sensor_database import get_standard_obd2_sensors, get_vag_sensors
 from services.sensor_manager import SensorDefinition, SensorManager
 from services.speech_service import (
     RECOMMENDED_SPEECH_MODELS,
+    LiveAudioRecorder,
     MockSTTBackend,
     MockTTSBackend,
     SpeechModelSpec,
@@ -51,6 +53,7 @@ from services.telemetry_metrics import (
     evaluate_metric_status,
     value_to_gauge_angle,
 )
+from services.vehicle_profiler import ECUIdentifier, VehicleProfile, VehicleProfiler, VINDecoder
 
 __all__ = [
     "AIEngine",
@@ -62,6 +65,8 @@ __all__ = [
     "RuleBasedDiagnosticAI",
     "SensorDefinition",
     "SensorManager",
+    "get_standard_obd2_sensors",
+    "get_vag_sensors",
     "LLMModelSpec",
     "RECOMMENDED_LLM_MODELS",
     "LLMBackend",
@@ -72,6 +77,7 @@ __all__ = [
     "RECOMMENDED_SPEECH_MODELS",
     "STTBackend",
     "TTSBackend",
+    "LiveAudioRecorder",
     "MockSTTBackend",
     "MockTTSBackend",
     "SpeechService",
@@ -97,4 +103,8 @@ __all__ = [
     "ActuatorSafetyPreflight",
     "ActuatorCatalog",
     "ActuatorTestRunner",
+    "VehicleProfile",
+    "VINDecoder",
+    "ECUIdentifier",
+    "VehicleProfiler",
 ]

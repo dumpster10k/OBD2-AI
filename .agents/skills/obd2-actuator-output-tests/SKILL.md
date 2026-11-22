@@ -92,19 +92,20 @@ Każdy test musi przejść procedurę `ActuatorSafetyPreflight`:
 from dataclasses import dataclass
 from typing import Optional, Callable
 
+
 @dataclass
 class ActuatorTestDefinition:
-    test_id: str                      # Unikalne ID, np. "vag_n80_purge_valve"
-    name: str                         # Czytelna nazwa: "Zawór N80 (EVAP)"
-    target_ecu: str                   # "01", "08", "17" lub "7E0"
-    protocol: str                     # "KWP1281", "KWP2000", "UDS_2F", "OBD_MODE_08"
-    command_payload: str              # Hex polecenia diagnostycznego (np. "2F11220301")
-    reset_payload: str                # Hex przywrócenia kontroli ECU (np. "2F112200")
-    duration_sec: float               # Czas trwania testu (np. 15.0 s)
-    description: str                  # Opis komponentu
-    operator_instruction: str         # Wskazówka: "Posłuchaj klikania przy filtrze powietrza"
+    test_id: str  # Unikalne ID, np. "vag_n80_purge_valve"
+    name: str  # Czytelna nazwa: "Zawór N80 (EVAP)"
+    target_ecu: str  # "01", "08", "17" lub "7E0"
+    protocol: str  # "KWP1281", "KWP2000", "UDS_2F", "OBD_MODE_08"
+    command_payload: str  # Hex polecenia diagnostycznego (np. "2F11220301")
+    reset_payload: str  # Hex przywrócenia kontroli ECU (np. "2F112200")
+    duration_sec: float  # Czas trwania testu (np. 15.0 s)
+    description: str  # Opis komponentu
+    operator_instruction: str  # Wskazówka: "Posłuchaj klikania przy filtrze powietrza"
     requires_engine_off: bool = True  # Warunek rpm == 0
-    min_voltage: float = 12.0         # Minimalne napięcie akumulatora
+    min_voltage: float = 12.0  # Minimalne napięcie akumulatora
 ```
 
 ### B. Weryfikacja warunków bezpieczeństwa (Pre-flight):

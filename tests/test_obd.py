@@ -1,3 +1,5 @@
+import obd
+
 from core.obd_client import OBDClient
 
 
@@ -146,3 +148,28 @@ def test_obd_client_disconnect_and_reconnect():
     res = client.connect(port="/dev/nonexistent_tty", timeout=0.1)
     assert res is False
     assert client.is_connected() is False
+
+
+def test_obd_client_get_vin_and_ecu_name():
+    class MockVinResponse:
+        def __init__(self, val):
+            self.value = val
+
+    class MockVinConnection(Connection):
+        def query(self, cmd):
+            if hasattr(obd.commands, "VIN") and cmd == obd.commands.VIN:
+                return MockVinResponse("WAUZZZ8E33A123456")
+            cal_cmd = getattr(obd.commands, "CALIBRATION_ID", None) or getattr(obd.commands, "ECU_NAME", None)
+            if cal_cmd is not None and cmd == cal_cmd:
+                return MockVinResponse("038906019FP AVF")
+            return None
+
+    conn = MockVinConnection()
+    client = OBDClient(connection=conn)
+    assert client.get_vin() == "WAUZZZ8E33A123456"
+    assert client.get_ecu_name() == "038906019FP AVF"
+
+    # Gdy rozłączony
+    disconnected_client = OBDClient(connection=None)
+    assert disconnected_client.get_vin() is None
+    assert disconnected_client.get_ecu_name() is None

@@ -139,6 +139,72 @@ class AudioRecorder(ABC):
         raise NotImplementedError
 
 
+class LiveAudioRecorder(AudioRecorder):
+    """Rejestruje dźwięk z fizycznego mikrofonu za pomocą biblioteki sounddevice."""
+
+    def __init__(self, device: Optional[int | str] = None):
+        self.device = device
+        self.device_name = self._detect_device_name()
+
+    def _detect_device_name(self) -> str:
+        try:
+            import sounddevice as sd
+
+            if self.device is not None:
+                info = sd.query_devices(self.device)
+                if isinstance(info, list) and info:
+                    info = info[0]
+                if isinstance(info, dict):
+                    return str(info.get("name", f"Urządzenie {self.device}"))
+            devices = sd.query_devices()
+            if isinstance(devices, list):
+                for d in devices:
+                    if d.get("max_input_channels", 0) > 0:
+                        return str(d.get("name", "Domyślny mikrofon"))
+            elif isinstance(devices, dict):
+                return str(devices.get("name", "Domyślny mikrofon"))
+            return "Fizyczny mikrofon"
+        except Exception:
+            return "Fizyczny mikrofon"
+
+    @classmethod
+    def is_available(cls) -> bool:
+        """Sprawdza, czy sounddevice jest zainstalowane i czy dostępne jest urządzenie wejściowe."""
+        try:
+            import sounddevice as sd
+
+            devices = sd.query_devices()
+            if isinstance(devices, dict):
+                return bool(devices.get("max_input_channels", 0) > 0)
+            for d in devices:
+                if d.get("max_input_channels", 0) > 0:
+                    return True
+            return False
+        except Exception:
+            return False
+
+    def record(self, duration_sec: float = 3.0, sample_rate: int = 16000) -> bytes:
+        raw_bytes: bytes
+        try:
+            import sounddevice as sd
+
+            frames_count = int(duration_sec * sample_rate)
+            recording = sd.rec(frames_count, samplerate=sample_rate, channels=1, dtype="int16", device=self.device)
+            sd.wait()
+            raw_bytes = recording.tobytes()
+        except Exception as e:
+            logger.warning("Błąd nagrywania fizycznego mikrofonu: %s", e)
+            raw_bytes = b"\x00\x00" * int(duration_sec * sample_rate)
+
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(raw_bytes)
+        return buffer.getvalue()
+
+
 class MockAudioRecorder(AudioRecorder):
     """Deterministyczny mock nagrywania mikrofonu dla testów i środowisk headless."""
 
@@ -242,7 +308,27 @@ class SpeechService:
     ):
         self.stt_backend = stt_backend or MockSTTBackend()
         self.tts_backend = tts_backend or MockTTSBackend()
-        self.recorder = recorder or MockAudioRecorder()
+        if recorder is not None:
+            self.recorder = recorder
+        elif LiveAudioRecorder.is_available():
+            self.recorder = LiveAudioRecorder()
+        else:
+            self.recorder = MockAudioRecorder()
+
+    def get_microphone_status(self) -> dict[str, Any]:
+        """Zwraca stan dostępności fizycznego mikrofonu w systemie."""
+        is_live = isinstance(self.recorder, LiveAudioRecorder) and self.recorder.is_available()
+        dev_name = getattr(self.recorder, "device_name", "Mock Recorder")
+        return {
+            "is_available": self.recorder.is_available(),
+            "is_live": is_live,
+            "device_name": dev_name if is_live else "Brak fizycznego urządzenia",
+            "message": (
+                f"Fizyczny mikrofon aktywny: {dev_name}"
+                if is_live
+                else "Brak fizycznego mikrofonu lub biblioteki sounddevice. Użyj pola tekstowego."
+            ),
+        }
 
     @classmethod
     def list_models(cls) -> list[SpeechModelSpec]:
@@ -305,10 +391,14 @@ class VoiceDiagnosticAssistant:
         if any(term in q for term in ["pomoc", "co potrafisz", "komend", "jakie komendy", "instrukcj", "opcje"]):
             return (VoiceIntent.HELP, {})
 
-        # 3. Wyjaśnienie konkretnego kodu błędu (np. "wyjaśnij P0300", "co oznacza błąd P0171")
+        # 3. Wyjaśnienie konkretnego kodu błędu (np. "wyjaśnij P0300", "co oznacza błąd P0171", lub sam kod "P0171")
         dtc_match = re.search(r"\b([PBUCpbuc][0-3]\d{3})\b", query)
-        if dtc_match and any(term in q for term in ["wyjaśnij", "co oznacza", "co to jest", "opis", "błąd", "kod"]):
-            return (VoiceIntent.DTC_EXPLAIN, {"code": dtc_match.group(1).upper()})
+        if dtc_match:
+            if (
+                any(term in q for term in ["wyjaśnij", "co oznacza", "co to jest", "opis", "błąd", "kod"])
+                or len(q.split()) <= 2
+            ):
+                return (VoiceIntent.DTC_EXPLAIN, {"code": dtc_match.group(1).upper()})
 
         # 4. Temperatura cieczy chłodzącej / silnika
         if any(term in q for term in ["temperatur", "ile stopni", "płyn chłodząc", "ciecz", "grzeje"]):

@@ -71,10 +71,12 @@ Klasa `services.ai_engine.AIEngine` integruje silnik `RuleBasedDiagnosticAI`:
 from services.ai_engine import AIEngine
 
 ai = AIEngine()
-report = ai.analyze_context({
-    "dtc_codes": ["P0301"],
-    "rpm": 3500,  # Wysokie obroty + misfire -> pilność krytyczna!
-})
+report = ai.analyze_context(
+    {
+        "dtc_codes": ["P0301"],
+        "rpm": 3500,  # Wysokie obroty + misfire -> pilność krytyczna!
+    }
+)
 
 assert report.safe_to_drive is False
 assert report.overall_urgency == "critical"
@@ -85,9 +87,11 @@ assert report.overall_urgency == "critical"
 ```python
 from services.diagnostic_ai import LocalDiagnosticAI
 
+
 def my_local_llm_runner(prompt: str) -> str:
     # Wywołanie lokalnego modelu inference (np. llama.cpp)
     return "Zalecana zamiana cewek cylindra 1 i 2 w celu potwierdzenia usterki."
+
 
 local_ai = LocalDiagnosticAI(model_runner=my_local_llm_runner)
 report = local_ai.analyze({"dtc_codes": ["P0301"]})
