@@ -110,6 +110,28 @@ Zgodnie z wymogami bezpieczeństwa pojazdu (pkt 7 `AGENTS.md`) kasowanie kodów 
 
 ---
 
+## 7. Obsługa asystenta głosowego (Hands-Free Speech AI)
+
+Dedykowany panel `🎙️ ASYSTENT GŁOSOWY KIEROWCY (HANDS-FREE)` w interfejsie mobilnym pozwala na w pełni bezdotykową interakcję z asystentem diagnostycznym:
+
+- **Szybkie komendy głosowe (Quick Action Chips)**:
+  - `[ 🌡️ Temp. cieczy ]`: natychmiastowe sprawdzenie temperatury płynu ECT i ostrzeżeń termicznych.
+  - `[ 🔋 Akumulator ]`: weryfikacja napięcia instalacji i stanu alternatora.
+  - `[ 🚨 Błędy DTC ]`: odczyt aktywnych kodów usterek silnika.
+  - `[ 🛡️ Czy jechać? ]`: ocena zdatności do dalszej jazdy w oparciu o stan techniczny i kody usterek.
+  - `[ 🏎️ Prędkość/RPM ]`: odczyt bieżących parametrów dynamicznych.
+  - `[ ❓ Pomoc ]`: lista dostępnych poleceń głosowych.
+- **Interakcja mikrofonowa na żywo**:
+  - Przycisk `🎙️ Nagraj (3s)` uruchamia moduł `AudioRecorder`, nagrywa próbkę głosu kierowcy i przekazuje do silnika STT (Whisper/Vosk).
+  - Pasek wprowadzania tekstu z przyciskiem `Zapytaj`: umożliwia testowanie komend głosowych oraz manualne wprowadzanie zapytań bez konieczności używania mikrofonu.
+- **Odpowiedzi i synteza mowy (TTS)**:
+  - Dynamiczny podgląd transkrybowanego pytania i zsyntetyzowanej odpowiedzi w GUI.
+  - Generowanie strumienia audio WAV przez `PiperTTSBackend` do odsłuchu przez głośniki pokładowe pojazdu.
+- **Ochrona bezpieczeństwa jazdy**:
+  - Asystent głosowy kategorycznie odrzuca prośby o kasowanie błędów ("Skasuj błędy"), wymuszając manualne potwierdzenie na postoju zgodnie z punktem 7 `AGENTS.md`.
+
+---
+
 ## 8. Ustawienia połączenia (Connection & Config)
 
 Panel `⚙️ USTAWIENIA POŁĄCZENIA OBD-II` umożliwia konfigurację i dynamiczne zarządzanie łącznością z adapterem diagnostycznym (Bluetooth na urządzeniach mobilnych, USB/Bluetooth na laptopach):

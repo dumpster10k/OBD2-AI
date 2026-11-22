@@ -10,6 +10,43 @@ project_root = str(Path(__file__).resolve().parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+class WidgetStub:
+    """Uniwersalna atrapa widżetów Kivy dla środowisk CI / headless / fallback."""
+
+    def __init__(self, *args, **kwargs):
+        self.children: list[Any] = []
+        self.text: str = kwargs.get("text", "")
+        self.color: list[float] = kwargs.get("color", [1.0, 1.0, 1.0, 1.0])
+        self.size_hint_y = kwargs.get("size_hint_y", 1)
+        self.size_hint_x = kwargs.get("size_hint_x", 1)
+        self.height = kwargs.get("height", 100)
+        self.width = kwargs.get("width", 100)
+        self.pos = (0, 0)
+        self.size = (100, 100)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def add_widget(self, widget: Any, *args, **kwargs) -> None:
+        self.children.append(widget)
+
+    def bind(self, **kwargs) -> None:
+        pass
+
+    def fbind(self, *args, **kwargs) -> None:
+        pass
+
+    def unbind(self, *args, **kwargs) -> None:
+        pass
+
+    def funbind(self, *args, **kwargs) -> None:
+        pass
+
+    def setter(self, name: str) -> Any:
+        def _setter(val: Any) -> None:
+            setattr(self, name, val)
+        return _setter
+
+
 try:
     from kivy.app import App
     from kivy.core.window import Window
@@ -25,31 +62,6 @@ try:
     KIVY_AVAILABLE = True
 except ImportError:
     KIVY_AVAILABLE = False
-
-    class WidgetStub:
-        def __init__(self, *args, **kwargs):
-            self.children: list[Any] = []
-            self.text: str = kwargs.get("text", "")
-            self.color: list[float] = kwargs.get("color", [1.0, 1.0, 1.0, 1.0])
-            self.size_hint_y = kwargs.get("size_hint_y", 1)
-            self.size_hint_x = kwargs.get("size_hint_x", 1)
-            self.height = kwargs.get("height", 100)
-            self.width = kwargs.get("width", 100)
-            self.pos = (0, 0)
-            self.size = (100, 100)
-            for k, v in kwargs.items():
-                setattr(self, k, v)
-
-        def add_widget(self, widget: Any, *args, **kwargs) -> None:
-            self.children.append(widget)
-
-        def bind(self, **kwargs) -> None:
-            pass
-
-        def setter(self, name: str) -> Any:
-            def _setter(val: Any) -> None:
-                setattr(self, name, val)
-            return _setter
 
     class App:
         def build(self) -> Any:
@@ -325,7 +337,7 @@ class TelemetryChart(StyledCard):
             self.plot_area.bind(pos=self._redraw, size=self._redraw)
             self.add_widget(self.plot_area)
         else:
-            self.plot_area = WidgetStub(size_hint=(1, 1))
+            self.plot_area = Widget(size_hint=(1, 1))
             self.add_widget(self.plot_area)
 
     def set_metric(self, metric: str) -> None:
@@ -429,6 +441,8 @@ class DashboardController:
         self.latest_report: Optional[DiagnosisReport] = None
         self.last_voice_query: str = ""
         self.last_voice_response: str = ""
+        self.last_voice_audio: bytes = b""
+        self.voice_status_text: str = "Gotowy (naciśnij przycisk lub wybierz komendę)"
         self.dtc_clear_pending: bool = False
         self.session_log: list[dict[str, Any]] = []
 
@@ -667,16 +681,31 @@ class DashboardController:
             "voltage": self.telemetry.get("voltage", 0.0),
         }
 
-        if text_query and not audio_data:
-            audio_data = self.ai.voice.speech.text_to_speech(text_query)
+        if text_query:
+            query, response, out_audio = self.ai.handle_voice_text_command(
+                text_query,
+                vehicle_context=vehicle_context,
+            )
+        else:
+            query, response, out_audio = self.ai.handle_voice_command(
+                audio_data or b"",
+                vehicle_context=vehicle_context,
+            )
 
-        query, response, out_audio = self.ai.handle_voice_command(
-            audio_data or b"",
-            vehicle_context=vehicle_context,
-        )
         self.last_voice_query = query
         self.last_voice_response = response
+        self.last_voice_audio = out_audio
+        self.voice_status_text = f"Odpowiedź wygenerowana dla: \"{query}\""
         return query, response, out_audio
+
+    def record_and_handle_voice(self, duration_sec: float = 3.0) -> tuple[str, str, bytes]:
+        """Nagrywa dźwięk z mikrofonu przez serwis mowy i przetwarza polecenie."""
+        audio = self.ai.voice.speech.record_audio(duration_sec=duration_sec)
+        return self.handle_voice_input(audio_data=audio)
+
+    def handle_quick_voice_command(self, cmd_prompt: str) -> tuple[str, str, bytes]:
+        """Obsługuje szybkie predefiniowane polecenie asystenta głosowego."""
+        return self.handle_voice_input(text_query=cmd_prompt)
 
 
 class CarDoctorUI(BoxLayout):
@@ -1089,6 +1118,153 @@ class CarDoctorUI(BoxLayout):
         self.content_box.add_widget(self.report_card)
 
         # ---------------------------------------------------------------------
+        # 6. Panel asystenta głosowego (Hands-Free Speech AI: Whisper / Piper)
+        # ---------------------------------------------------------------------
+        self.voice_card = StyledCard(
+            orientation="vertical",
+            size_hint_y=None,
+            height=290,
+            padding=[16, 14, 16, 14],
+            spacing=8,
+        )
+
+        voice_header = BoxLayout(orientation="horizontal", size_hint_y=None, height=28)
+        voice_title = Label(
+            text="🎙️ ASYSTENT GŁOSOWY KIEROWCY (HANDS-FREE)",
+            font_size="13sp",
+            bold=True,
+            halign="left",
+            color=COLOR_VOICE,
+        )
+        voice_header.add_widget(voice_title)
+        self.voice_card.add_widget(voice_header)
+
+        # Siatka 6 szybkich poleceń głosowych
+        quick_grid = GridLayout(cols=3, spacing=6, size_hint_y=None, height=72)
+
+        self.btn_cmd_temp = Button(
+            text="🌡️ Temp. cieczy",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.20, 0.22, 0.32, 1.0),
+        )
+        self.btn_cmd_temp.bind(on_press=lambda _b: self.on_quick_voice_command("Jaka jest temperatura płynu chłodzącego?"))
+        quick_grid.add_widget(self.btn_cmd_temp)
+
+        self.btn_cmd_volt = Button(
+            text="🔋 Akumulator",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.20, 0.22, 0.32, 1.0),
+        )
+        self.btn_cmd_volt.bind(on_press=lambda _b: self.on_quick_voice_command("Jakie jest napięcie akumulatora?"))
+        quick_grid.add_widget(self.btn_cmd_volt)
+
+        self.btn_cmd_dtc = Button(
+            text="🚨 Błędy DTC",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.20, 0.22, 0.32, 1.0),
+        )
+        self.btn_cmd_dtc.bind(on_press=lambda _b: self.on_quick_voice_command("Jakie mam błędy?"))
+        quick_grid.add_widget(self.btn_cmd_dtc)
+
+        self.btn_cmd_safe = Button(
+            text="🛡️ Czy jechać?",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.20, 0.22, 0.32, 1.0),
+        )
+        self.btn_cmd_safe.bind(on_press=lambda _b: self.on_quick_voice_command("Czy mogę bezpiecznie jechać dalej?"))
+        quick_grid.add_widget(self.btn_cmd_safe)
+
+        self.btn_cmd_speed = Button(
+            text="🏎️ Prędkość/RPM",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.20, 0.22, 0.32, 1.0),
+        )
+        self.btn_cmd_speed.bind(on_press=lambda _b: self.on_quick_voice_command("Z jaką prędkością jadę i jakie mam obroty?"))
+        quick_grid.add_widget(self.btn_cmd_speed)
+
+        self.btn_cmd_help = Button(
+            text="❓ Pomoc",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.20, 0.22, 0.32, 1.0),
+        )
+        self.btn_cmd_help.bind(on_press=lambda _b: self.on_quick_voice_command("Pomoc - jakie komendy mogę wydać?"))
+        quick_grid.add_widget(self.btn_cmd_help)
+
+        self.voice_card.add_widget(quick_grid)
+
+        # Wiersz interakcji na żywo
+        voice_live_row = BoxLayout(orientation="horizontal", spacing=6, size_hint_y=None, height=36)
+
+        self.btn_voice_record = Button(
+            text="🎙️ Nagraj (3s)",
+            font_size="12sp",
+            bold=True,
+            size_hint_x=0.35,
+            background_normal="",
+            background_color=COLOR_VOICE,
+        )
+        self.btn_voice_record.bind(on_press=self.on_voice_record_button)
+        voice_live_row.add_widget(self.btn_voice_record)
+
+        self.voice_custom_input = TextInput(
+            hint_text="Wpisz komendę lub pytanie...",
+            text="",
+            multiline=False,
+            font_size="12sp",
+            size_hint_x=0.45,
+            background_color=(0.10, 0.14, 0.20, 1.0),
+            foreground_color=(1.0, 1.0, 1.0, 1.0),
+        )
+        voice_live_row.add_widget(self.voice_custom_input)
+
+        self.btn_voice_send = Button(
+            text="Zapytaj",
+            font_size="12sp",
+            bold=True,
+            size_hint_x=0.20,
+            background_normal="",
+            background_color=COLOR_PRIMARY,
+        )
+        self.btn_voice_send.bind(on_press=self.on_send_custom_voice_query)
+        voice_live_row.add_widget(self.btn_voice_send)
+        self.voice_card.add_widget(voice_live_row)
+
+        # Etykiety statusu i odpowiedzi asystenta
+        self.voice_status_label = Label(
+            text="Gotowy (naciśnij nagrywanie lub wybierz szybką komendę)",
+            font_size="11sp",
+            size_hint_y=None,
+            height=20,
+            halign="left",
+            color=COLOR_TEXT_MUTED,
+        )
+        self.voice_card.add_widget(self.voice_status_label)
+
+        self.voice_response_label = Label(
+            text="Wybierz polecenie powyżej, aby usłyszeć odpowiedź asystenta mowy.",
+            font_size="11sp",
+            size_hint_y=None,
+            height=60,
+            halign="left",
+            valign="top",
+            color=(0.90, 0.92, 0.96, 1.0),
+        )
+        self.voice_card.add_widget(self.voice_response_label)
+        self.content_box.add_widget(self.voice_card)
+
+        # ---------------------------------------------------------------------
         # 7. Panel akcji (Skanowanie, Asystent głosowy, Dwuetapowe kasowanie)
         # ---------------------------------------------------------------------
         actions_card = StyledCard(
@@ -1307,10 +1483,46 @@ class CarDoctorUI(BoxLayout):
                 self.on_scan_errors()
             self.status_label.text = res["message"]
 
+    def on_quick_voice_command(self, prompt: str) -> None:
+        """Wykonuje szybkie predefiniowane zapytanie głosowe."""
+        query, answer, _ = self.controller.handle_quick_voice_command(prompt)
+        self.voice_status_label.text = f"Komenda: \"{query}\""
+        self.voice_response_label.text = answer
+        self.status_label.text = f"Głos: {query}"
+        self.report_summary_label.text = (
+            f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
+        )
+
+    def on_voice_record_button(self, _btn=None) -> None:
+        """Nagrywa mowę z mikrofonu i przetwarza przez STT -> Analiza -> TTS."""
+        query, answer, _ = self.controller.record_and_handle_voice()
+        self.voice_status_label.text = f"Rozpoznano mowę: \"{query}\""
+        self.voice_response_label.text = answer
+        self.status_label.text = f"Głos: {query}"
+        self.report_summary_label.text = (
+            f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
+        )
+
+    def on_send_custom_voice_query(self, _btn=None) -> None:
+        """Wysyła zapytanie wpisane ręcznie w polu tekstowym asystenta."""
+        txt = self.voice_custom_input.text.strip()
+        if not txt:
+            txt = "Co z autem?"
+        query, answer, _ = self.controller.handle_voice_input(text_query=txt)
+        self.voice_custom_input.text = ""
+        self.voice_status_label.text = f"Zapytanie: \"{query}\""
+        self.voice_response_label.text = answer
+        self.status_label.text = f"Głos: {query}"
+        self.report_summary_label.text = (
+            f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
+        )
+
     def on_voice_assistant(self, _btn=None) -> None:
         query, answer, _ = self.controller.handle_voice_input(
             text_query="Co z autem?"
         )
+        self.voice_status_label.text = f"Komenda: \"{query}\""
+        self.voice_response_label.text = answer
         self.status_label.text = f"Głos: {query}"
         self.report_summary_label.text = (
             f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
