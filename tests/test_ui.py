@@ -279,3 +279,112 @@ def test_car_doctor_ui_critical_urgency_badge():
     ui.on_scan_errors()
     assert "CRITICAL" in ui.urgency_badge.text
     assert tuple(ui.urgency_badge.color) == (0.88, 0.11, 0.28, 1.0)
+
+
+def test_dashboard_controller_simulation_mode():
+    controller = DashboardController()
+    assert controller.simulation_mode is False
+
+    # Włączenie symulacji z domyślnym scenariuszem
+    scen = controller.enable_simulation("misfire")
+    assert controller.simulation_mode is True
+    assert controller.active_scenario == "misfire"
+    assert len(controller.simulated_dtc) == 2
+    assert controller.telemetry["rpm"] == 2800
+
+    # Skanowanie w trybie symulacji
+    codes, report = controller.scan_dtc_and_diagnose()
+    assert len(codes) == 2
+    assert report is not None
+    assert report.safe_to_drive is True or report.overall_urgency in ["warning", "critical", "info"]
+
+    # Zmiana na scenariusz przegrzania
+    scen_overheat = controller.load_simulation_scenario("overheat")
+    assert scen_overheat["name"] == "Przegrzanie silnika (Krytyczne P0217)"
+    assert controller.telemetry["coolant_temp"] == 119
+    _, report_overheat = controller.scan_dtc_and_diagnose()
+    assert report_overheat.overall_urgency == "critical"
+    assert report_overheat.safe_to_drive is False
+
+    # Kasowanie DTC w trybie symulacji na postoju
+    controller.simulated_telemetry["speed"] = 0
+    controller.refresh_telemetry()
+    controller.request_clear_dtc()
+    clear_res = controller.confirm_clear_dtc()
+    assert clear_res["success"] is True
+    assert controller.simulated_dtc == []
+    assert controller.current_dtcs == []
+
+    # Wyłączenie symulacji
+    controller.disable_simulation()
+    assert controller.simulation_mode is False
+
+
+def test_dashboard_controller_telemetry_history_buffer():
+    controller = DashboardController()
+    # Zapis ponad 50 punktów dla weryfikacji ograniczenia bufora
+    for i in range(65):
+        controller.record_telemetry_point({"rpm": 1000 + i, "speed": i, "coolant_temp": 80, "voltage": 14.0})
+
+    hist_rpm = controller.get_telemetry_history("rpm")
+    assert len(hist_rpm) == 50
+    assert hist_rpm[-1] == 1064.0
+
+    hist_speed = controller.get_telemetry_history("speed")
+    assert len(hist_speed) == 50
+    assert hist_speed[-1] == 64.0
+
+
+def test_telemetry_chart_metrics_and_history():
+    from ui.main import TelemetryChart
+    chart = TelemetryChart()
+
+    # Zmiana metryk
+    chart.set_metric("speed")
+    assert chart.current_metric == "speed"
+    assert "PRĘDKOŚĆ" in chart.chart_title.text
+
+    chart.set_metric("coolant_temp")
+    assert chart.current_metric == "coolant_temp"
+    assert "PŁYN" in chart.chart_title.text
+
+    chart.set_metric("voltage")
+    assert chart.current_metric == "voltage"
+    assert "NAPIĘCIE" in chart.chart_title.text
+
+    chart.set_metric("rpm")
+    assert chart.current_metric == "rpm"
+
+    # Aktualizacja historii próbkowania
+    chart.update_history([800.0, 1200.0, 2500.0, 3100.0])
+    assert "Bieżące: 3100 RPM" in chart.stats_label.text
+    assert "Min: 800 RPM" in chart.stats_label.text
+    assert "Max: 3100 RPM" in chart.stats_label.text
+
+
+def test_car_doctor_ui_simulation_and_chart_integration():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=800, speed=0, coolant=85, voltage=14.0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Weryfikacja obecności komponentów wykresu i symulatora
+    assert hasattr(ui, "chart")
+    assert hasattr(ui, "sim_toggle_btn")
+    assert hasattr(ui, "btn_scen_overheat")
+
+    # Przełączenie trybu symulacji z poziomu UI
+    ui.on_toggle_simulation()
+    assert controller.simulation_mode is True
+    assert "Symulacja: WŁ" in ui.sim_toggle_btn.text
+
+    # Wybór scenariusza przegrzania
+    ui.on_select_scenario("overheat")
+    assert controller.active_scenario == "overheat"
+    assert "Wykryto 1 kod" in ui.status_label.text
+    assert "CRITICAL" in ui.urgency_badge.text
+
+    # Wyłączenie symulacji przez ponowne kliknięcie toggle
+    ui.on_toggle_simulation()
+    assert controller.simulation_mode is False
+    assert "Symulacja: WYŁ" in ui.sim_toggle_btn.text
