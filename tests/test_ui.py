@@ -559,3 +559,33 @@ def test_car_doctor_ui_voice_card_and_interactions():
     assert "Komenda" in ui.voice_status_label.text
     assert "Odpowiedź asystenta głosowego" in ui.report_summary_label.text
 
+
+def test_car_doctor_ui_telemetry_logging_controls():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=1200, speed=30, coolant=85, voltage=14.0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    assert hasattr(ui, "btn_toggle_logging")
+    assert hasattr(ui, "btn_export_csv")
+
+    # Start nagrywania
+    ui.on_toggle_logging()
+    assert controller.is_logging is True
+    assert "🔴 Rejestrowanie WŁ" in ui.btn_toggle_logging.text
+    assert "Rozpoczęto rejestrację" in ui.status_label.text
+
+    # Pobranie próbki w trakcie nagrywania
+    controller.refresh_telemetry()
+
+    # Eksport CSV
+    ui.on_export_csv()
+    assert "Wyeksportowano" in ui.status_label.text
+
+    # Zatrzymanie nagrywania
+    ui.on_toggle_logging()
+    assert controller.is_logging is False
+    assert "WYŁ" in ui.btn_toggle_logging.text
+    assert "Zatrzymano rejestrację" in ui.status_label.text
+
+

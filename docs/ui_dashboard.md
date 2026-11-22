@@ -151,3 +151,25 @@ Panel `⚙️ USTAWIENIA POŁĄCZENIA OBD-II` umożliwia konfigurację i dynamic
 - **Dynamiczne rozłączanie i ponowne łączenie**: przyciski `🔌 Połącz` oraz `Rozłącz` wywołują metody `DashboardController.connect_obd()` i `disconnect_obd()`, bezpiecznie zamykając poprzednie połączenie i konfigurując instancję `OBDClient` w czasie działania aplikacji bez konieczności jej restartu.
 - **Pasek statusu połączenia**: bieżąca informacja o stanie połączenia, aktywnym profilu, wybranym porcie oraz prędkości baud.
 
+---
+
+## 9. Rejestrator telemetrii i eksport CSV (`TelemetryLogger`)
+
+Moduł `TelemetryLogger` (`services/telemetry_logger.py`) zapewnia trwałe logowanie próbkowania parametrów jazdy i zdarzeń audytowych do lokalnej bazy danych SQLite oraz eksport danych do formatu CSV:
+
+### Schemat bazy danych (`data/telemetry.db`)
+1. **`sessions`**: rejestr przejazdów i cykli pomiarowych:
+   - `session_id`, `vehicle_name`, `start_time`, `end_time`, `initial_dtcs`, `final_dtcs`, `notes`.
+2. **`telemetry_samples`**: próbki telemetryczne:
+   - `timestamp`, `rpm`, `speed`, `coolant_temp`, `voltage`, `extra_data` (parametry niestandardowe w JSON).
+3. **`audit_events`**: zdarzenia bezpieczeństwa i diagnostyki:
+   - `event_type` (np. `DTC_CLEARED`, `CRITICAL_ALERT`), `details`, `speed_at_event` (dowód postoju pojazdu zgodnie z AGENTS.md pkt 7).
+
+### Ochrona prywatności i anonimizacja (AGENTS.md pkt 7)
+Wszystkie numery nadwozia VIN wprowadzane do bazy danych lub logów podlegają automatycznemu maskowaniu za pomocą funkcji `mask_vin(vin)` (np. `WAUZZZ8K... -> WAU***...***123`).
+
+### Interfejs użytkownika
+- **Przycisk `⏺️ Rejestruj trasę: WYŁ / 🔴 Rejestrowanie WŁ`**: uruchamia lub zatrzymuje zapis ciągłego próbkowania telemetrii.
+- **Przycisk `💾 Eksportuj CSV`**: eksportuje próbki aktywnej lub ostatniej zarejestrowanej sesji do pliku CSV (`timestamp,rpm,speed,coolant_temp,voltage`) w katalogu `data/`.
+
+
