@@ -85,3 +85,9 @@ Przed modyfikacją konkretnego podsystemu skonsultuj dedykowaną specyfikację w
 - [`docs/diagnostic_ai.md`](docs/diagnostic_ai.md) — silnik diagnostyczny, reguły triage'u i deterministyczne fallbacki.
 - [`docs/ai_models.md`](docs/ai_models.md) — specyfikacja modeli LLM (GGUF) oraz modeli mowy (Whisper/Piper).
 - [`docs/ui_dashboard.md`](docs/ui_dashboard.md) — architektura DashboardController, pulpit telemetrii i protokół kasowania DTC.
+
+## 9. Dedykowane umiejętności agenta (Skills w `.agents/skills/`)
+
+- [`.agents/skills/obd2-sensor-authoring/SKILL.md`](.agents/skills/obd2-sensor-authoring/SKILL.md) — definiowanie nowych czujników i PID-ów w SensorManager, formuły obliczeniowe i walidacja zakresów.
+- [`.agents/skills/obd2-ecu-log-interpreter/SKILL.md`](.agents/skills/obd2-ecu-log-interpreter/SKILL.md) — interpretacja zrzutów logów z ECU/ELM327, dekodowanie kodów usterek DTC i negatywnych odpowiedzi NRC.
+
