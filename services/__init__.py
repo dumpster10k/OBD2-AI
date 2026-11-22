@@ -34,6 +34,13 @@ from services.speech_service import (
     VoiceDiagnosticAssistant,
 )
 from services.telemetry_logger import TelemetryLogger, mask_vin
+from services.telemetry_metrics import (
+    MetricThresholds,
+    STANDARD_METRIC_THRESHOLDS,
+    calculate_series_stats,
+    evaluate_metric_status,
+    value_to_gauge_angle,
+)
 
 __all__ = [
     "AIEngine",
@@ -67,4 +74,9 @@ __all__ = [
     "decode_pid_response",
     "parse_raw_ecu_log",
     "format_log_summary",
+    "MetricThresholds",
+    "STANDARD_METRIC_THRESHOLDS",
+    "calculate_series_stats",
+    "value_to_gauge_angle",
+    "evaluate_metric_status",
 ]

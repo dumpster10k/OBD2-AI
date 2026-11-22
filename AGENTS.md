@@ -90,4 +90,5 @@ Przed modyfikacją konkretnego podsystemu skonsultuj dedykowaną specyfikację w
 
 - [`.agents/skills/obd2-sensor-authoring/SKILL.md`](.agents/skills/obd2-sensor-authoring/SKILL.md) — definiowanie nowych czujników i PID-ów w SensorManager, formuły obliczeniowe i walidacja zakresów.
 - [`.agents/skills/obd2-ecu-log-interpreter/SKILL.md`](.agents/skills/obd2-ecu-log-interpreter/SKILL.md) — interpretacja zrzutów logów z ECU/ELM327, dekodowanie kodów usterek DTC i negatywnych odpowiedzi NRC.
+- [`.agents/skills/obd2-sensor-charts-gauges/SKILL.md`](.agents/skills/obd2-sensor-charts-gauges/SKILL.md) — projektowanie wskaźników zegarowych (dial gauges), wykresów trendu, obliczanie średnich i optymalnych progów pracy silnika.
 
