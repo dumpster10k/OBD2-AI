@@ -982,3 +982,45 @@ def test_dial_gauge_widget_rendering_and_status():
     gauge.update_value(120.0)
     assert "120 °C" in gauge.value_label.text
     assert "KRYTYCZNY" in gauge.status_badge.text
+
+
+def test_car_scanner_responsive_layout():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=2000, speed=50, coolant=90, voltage=14.0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # 1. Test trybu poziomego (Landscape / Poziom - tablet lub smartfon w uchwycie samochodowym)
+    ui.apply_responsive_layout(width=1024, height=600)
+    assert ui.is_landscape is True
+    assert ui.grid_telemetry.cols == 4  # 4 wskaźniki w jednym poziomym rzędzie
+    assert ui.tab_nav_bar.cols == 6  # 6 zakładek w 1 rzędzie
+    assert ui.all_sensors_grid.cols == 3
+    assert ui.telemetry_container.height == 165
+
+    # 2. Test trybu pionowego wąskiego (Portrait - telefon w pionie < 480px)
+    ui.apply_responsive_layout(width=390, height=844)
+    assert ui.is_landscape is False
+    assert ui.grid_telemetry.cols == 2  # 2 kolumny wskaźników
+    assert ui.tab_nav_bar.cols == 3  # 2 rzędy po 3 przyciski zakładek
+    assert ui.tab_nav_bar.height == 72
+    assert ui.all_sensors_grid.cols == 1  # 1 kolumna na wąskim ekranie
+    assert ui.telemetry_container.height == 265
+
+    # 3. Test trybu pionowego standardowego (Portrait tablet/duży telefon np. 600x900)
+    ui.apply_responsive_layout(width=600, height=900)
+    assert ui.is_landscape is False
+    assert ui.grid_telemetry.cols == 2
+    assert ui.tab_nav_bar.cols == 6
+    assert ui.all_sensors_grid.cols == 2
+
+    # 4. Sprawdzenie odporności na nieprawidłowe wymiary
+    ui.apply_responsive_layout(width=0, height=0)
+    assert ui.grid_telemetry.cols == 2
+
+    # 5. Wywołanie handlerów eventów Kivy
+    ui._on_window_size(None, (800, 480))
+    assert ui.is_landscape is True
+
+    ui._on_self_size(None, (400, 700))
+    assert ui.is_landscape is False

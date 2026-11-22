@@ -1192,11 +1192,17 @@ class CarDoctorUI(BoxLayout):
         self.controller = controller or DashboardController()
         self.controller.load_available_speech_models()  # Inicjalizacja modeli mowy
 
+        self.is_landscape: bool = False
+        self.screen_width: float = 800.0
+        self.screen_height: float = 600.0
+
         if KIVY_AVAILABLE:
             try:
                 Window.clearcolor = COLOR_BG
+                Window.bind(size=self._on_window_size)
             except Exception:
                 pass
+        self.bind(size=self._on_self_size)
 
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
         self.content_box = BoxLayout(
@@ -1397,13 +1403,14 @@ class CarDoctorUI(BoxLayout):
         # ---------------------------------------------------------------------
         # C. Kafelki telemetrii na żywo z Min/Max
         # ---------------------------------------------------------------------
-        telemetry_container = StyledCard(
+        self.telemetry_container = StyledCard(
             orientation="vertical",
             size_hint_y=None,
             height=265,
             padding=[14, 14, 14, 14],
             spacing=10,
         )
+        telemetry_container = self.telemetry_container
 
         self.grid_telemetry = GridLayout(cols=2, spacing=10, size_hint_y=None, height=155)
 
@@ -2422,6 +2429,57 @@ class CarDoctorUI(BoxLayout):
             self.tab_container.add_widget(self.section_diagnostics)
             self.tab_container.add_widget(self.section_settings)
             self.update_all_sensors_ui(getattr(self.sensor_search_input, "text", ""))
+
+    def _on_window_size(self, _window: Any, size: tuple[float, float]) -> None:
+        """Callback Kivy Window przy zmianie rozmiaru okna lub obrocie ekranu."""
+        self.apply_responsive_layout(size[0], size[1])
+
+    def _on_self_size(self, _instance: Any, size: tuple[float, float]) -> None:
+        """Callback przy zmianie rozmiaru widżetu głównego."""
+        if size[0] > 0 and size[1] > 0:
+            self.apply_responsive_layout(size[0], size[1])
+
+    def apply_responsive_layout(self, width: float, height: float) -> None:
+        """Dostosowuje układ elementów do rozmiaru i orientacji ekranu (poziom / pion)."""
+        if width <= 0 or height <= 0:
+            return
+
+        is_landscape = width > height
+        self.is_landscape = is_landscape
+        self.screen_width = width
+        self.screen_height = height
+
+        # 1. Dostosowanie paska zakładek (Tab Nav Bar)
+        if width < 480:
+            # Wąski ekran w pionie (smartphone portrait): 2 rzędy po 3 przyciski
+            self.tab_nav_bar.cols = 3
+            self.tab_nav_bar.height = 72
+        else:
+            # Szeroki ekran lub poziom: 1 rząd 6 przycisków
+            self.tab_nav_bar.cols = 6
+            self.tab_nav_bar.height = 36
+
+        # 2. Dostosowanie kafelków telemetrii (Grid Telemetry)
+        if is_landscape and width >= 780:
+            # Tryb poziomy / HUD: 4 kolumny w jednym rzędzie
+            self.grid_telemetry.cols = 4
+            self.grid_telemetry.height = 85
+            if hasattr(self, "telemetry_container"):
+                self.telemetry_container.height = 165
+        else:
+            # Tryb pionowy lub kompaktowy: 2 kolumny
+            self.grid_telemetry.cols = 2
+            self.grid_telemetry.height = 155
+            if hasattr(self, "telemetry_container"):
+                self.telemetry_container.height = 265
+
+        # 3. Dostosowanie siatki wszystkich sensorów (All Sensors Grid)
+        if is_landscape and width >= 900:
+            self.all_sensors_grid.cols = 3
+        elif width < 480:
+            self.all_sensors_grid.cols = 1
+        else:
+            self.all_sensors_grid.cols = 2
 
     def on_sensor_search_change(self, _instance: Any, value: str) -> None:
         """Filtruje listę wszystkich czujników podczas wpisywania tekstu."""
