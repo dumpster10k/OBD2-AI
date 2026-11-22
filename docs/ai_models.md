@@ -43,17 +43,39 @@ Interfejs mowy (`services/speech_service.py`) pozwala na bezdotykową obsługę 
 Przepływ przetwarzania zapytania:
 
 ```text
-[Głos kierowcy] 
+[Głos kierowcy / Mikrofon] 
        │
        ▼
- [STT: Whisper / Vosk]
+ [STT: Whisper / Vosk / AudioRecorder]
        │
        ▼
-[Detekcja intencji i reguły bezpieczeństwa]
-       ├── "Skasuj błędy" ──► ODMOWA GŁOSOWA (wymóg manualnego potwierdzenia na postoju!)
-       ├── "Czy mogę jechać?" ──► Analiza telemetrii + kodów DTC przez DiagnosticAI
-       └── Zapytanie ogólne ──► LocalLLMEngine (z kontekstem pojazdu)
+[Klasyfikacja intencji (VoiceIntent) i ochrona bezpieczeństwa]
+       ├── "Skasuj błędy" ──────────► ODMOWA GŁOSOWA (wymóg manualnego potwierdzenia na postoju!)
+       ├── "Czy mogę jechać?" ──────► Analiza zdatności do jazdy (DiagnosticAI)
+       ├── "Jaka temperatura?" ─────► Odczyt telemetrii ECT (°C) i ocena ryzyka przegrzania
+       ├── "Napięcie / bateria" ────► Odczyt napięcia instalacji (V) i diagnoza ładowania
+       ├── "Prędkość i RPM" ────────► Odczyt prędkości (km/h) i obrotów silnika
+       ├── "Jakie mam błędy?" ──────► Raport zarejestrowanych kodów DTC
+       ├── "Wyjaśnij błąd P0300" ───► Interpretacja kodu DTC z bazy STANDARD_DTC_DATABASE
+       ├── "Pomoc / komendy" ───────► Podsumowanie dostępnych poleceń bezdotykowych
+       ├── "Co z autem?" ───────────► Całościowy raport stanu technicznego pojazdu
+       └── Zapytanie techniczne ────► LocalLLMEngine (z kontekstem pojazdu i telemetrii)
        │
        ▼
- [TTS: Piper TTS ONNX] ──► [Komunikat głosowy WAV]
+ [TTS: Piper TTS ONNX] ──► [Komunikat głosowy WAV / Odtwarzanie audio]
 ```
+
+### Obsługiwane polecenia głosowe
+| Intencja | Przykładowe frazy | Źródło danych / Reakcja |
+|---|---|---|
+| `CLEAR_DTC` | "Skasuj błędy", "Wyczyść błędy", "Kasuj" | **Odmowa**. Zgodnie z punktem 7 `AGENTS.md` kasowanie wymaga zatrzymania pojazdu i potwierdzenia manualnego. |
+| `SAFE_TO_DRIVE` | "Czy mogę jechać dalej?", "Czy bezpiecznie dojadę?" | Analiza telemetrii i kodów DTC (`DiagnosticAI.analyze()`). |
+| `COOLANT_TEMP` | "Jaka jest temperatura płynu?", "Czy silnik się grzeje?" | Odczyt PID ECT z oceną progową (<105°C norma, 105-114°C podwyższona, >=115°C krytyczna). |
+| `VOLTAGE` | "Jakie jest napięcie akumulatora?", "Stan baterii" | Odczyt napięcia instalacji (<11.8V niskie, 11.8-15.0V norma, >15.0V przeładowanie). |
+| `SPEED_RPM` | "Z jaką prędkością jadę?", "Jakie mam obroty?" | Zestawienie prędkości (km/h) i prędkości obrotowej silnika (RPM). |
+| `DTC_STATUS` | "Jakie mam błędy?", "Czy są jakieś usterki?" | Odczyt aktywnych kodów błędów ze sterownika ECU. |
+| `DTC_EXPLAIN` | "Wyjaśnij błąd P0300", "Co oznacza kod P0171?" | Szybkie wyjaśnienie usterki, przyczyn i zaleceń z bazy wiedzy. |
+| `HELP` | "Pomoc", "Co potrafisz?", "Jakie są komendy?" | Przegląd dostępnych poleceń asystenta mowy. |
+| `VEHICLE_HEALTH` | "Co z autem?", "Jaki jest stan pojazdu?" | Całościowe podsumowanie diagnostyczne. |
+| `GENERAL_LLM` | Dowolne inne pytania motoryzacyjne | Przetwarzanie przez lokalny LLM z wstrzykniętym kontekstem pojazdu. |
+

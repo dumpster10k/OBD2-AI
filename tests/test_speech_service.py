@@ -116,3 +116,121 @@ def test_piper_tts_backend(tmp_path: Path):
     non_existent.touch()
     assert backend.is_available() is True
     assert len(backend.synthesize("test")) > 0
+
+
+def test_voice_assistant_coolant_temp_intents():
+    assistant = VoiceDiagnosticAssistant()
+
+    # Normalna temperatura
+    _, resp_norm, _ = assistant.handle_text_query("Jaka jest temperatura płynu chłodzącego?", {"coolant_temp": 90})
+    assert "90°C" in resp_norm
+    assert "w normie" in resp_norm
+
+    # Podwyższona temperatura
+    _, resp_warn, _ = assistant.handle_text_query("Ile stopni ma płyn?", {"coolant_temp": 110})
+    assert "110°C" in resp_warn
+    assert "Podwyższona" in resp_warn
+
+    # Krytyczna temperatura
+    _, resp_crit, _ = assistant.handle_text_query("Czy silnik się grzeje?", {"coolant_temp": 120})
+    assert "120°C" in resp_crit
+    assert "Krytyczna" in resp_crit or "zatrzymaj" in resp_crit
+
+    # Brak odczytu
+    _, resp_none, _ = assistant.handle_text_query("temperatura cieczy", {"coolant_temp": 0})
+    assert "Brak" in resp_none
+
+
+def test_voice_assistant_voltage_intents():
+    assistant = VoiceDiagnosticAssistant()
+
+    # Prawidłowe napięcie
+    _, resp_ok, _ = assistant.handle_text_query("Jakie jest napięcie akumulatora?", {"voltage": 14.2})
+    assert "14.2 V" in resp_ok
+    assert "prawidłowe" in resp_ok
+
+    # Niskie napięcie
+    _, resp_low, _ = assistant.handle_text_query("Stan baterii?", {"voltage": 11.2})
+    assert "11.2 V" in resp_low
+    assert "Niskie" in resp_low
+
+    # Przeładowanie
+    _, resp_high, _ = assistant.handle_text_query("Napięcie ładowania?", {"voltage": 15.6})
+    assert "15.6 V" in resp_high
+    assert "Zbyt wysokie" in resp_high
+
+    # Brak odczytu
+    _, resp_zero, _ = assistant.handle_text_query("Napięcie", {"voltage": 0.0})
+    assert "Brak" in resp_zero
+
+
+def test_voice_assistant_speed_and_rpm_intent():
+    assistant = VoiceDiagnosticAssistant()
+    _, resp, _ = assistant.handle_text_query("Z jaką prędkością jadę i jakie mam obroty?", {"speed": 75, "rpm": 2400})
+    assert "75 km/h" in resp
+    assert "2400 RPM" in resp
+
+
+def test_voice_assistant_dtc_explanation():
+    assistant = VoiceDiagnosticAssistant()
+
+    # Znany kod błędu z bazy
+    _, resp_known, _ = assistant.handle_text_query("Wyjaśnij błąd P0300")
+    assert "P0300" in resp_known
+    assert "wypadanie zapłonów" in resp_known.lower() or "zapłon" in resp_known.lower()
+
+    # Nieznany kod błędu (fallback do LLM)
+    _, resp_unknown, _ = assistant.handle_text_query("Co oznacza kod P9999?")
+    assert len(resp_unknown) > 10
+
+
+def test_voice_assistant_help_intent():
+    assistant = VoiceDiagnosticAssistant()
+    _, resp, _ = assistant.handle_text_query("Pomoc - jakie komendy mogę wydać?")
+    assert "Dostępne polecenia" in resp
+    assert "Czy mogę jechać" in resp
+
+
+def test_voice_assistant_no_dtcs_status():
+    assistant = VoiceDiagnosticAssistant()
+    _, resp, _ = assistant.handle_text_query("Jakie mam błędy?", {"dtc_codes": []})
+    assert "Brak zarejestrowanych błędów" in resp
+
+
+def test_voice_assistant_vehicle_health_summary():
+    assistant = VoiceDiagnosticAssistant()
+    _, resp, _ = assistant.handle_text_query("Co z autem?", {"dtc_codes": [], "coolant_temp": 88, "voltage": 14.1})
+    assert "Raport stanu pojazdu" in resp
+
+
+def test_audio_recorder_and_speech_service():
+    from services.speech_service import MockAudioRecorder
+    recorder = MockAudioRecorder()
+    assert recorder.is_available() is True
+    audio = recorder.record(duration_sec=1.0)
+    assert len(audio) > 44  # Poprawny nagłówek WAV
+
+    service = SpeechService(recorder=recorder)
+    rec_audio = service.record_audio(duration_sec=0.5)
+    assert len(rec_audio) > 44
+
+    # Przełączanie backendów
+    service.set_stt_backend(MockSTTBackend("Nowy tekst"))
+    assert service.speech_to_text(b"audio") == "Nowy tekst"
+
+    service.set_tts_backend(MockTTSBackend())
+    assert len(service.text_to_speech("Witaj")) > 44
+
+    custom_rec = MockAudioRecorder(simulated_wav=b"custom_wav_data_1234567890")
+    service.set_recorder(custom_rec)
+    assert service.record_audio() == b"custom_wav_data_1234567890"
+
+
+def test_ai_engine_voice_text_command():
+    from services.ai_engine import AIEngine
+    ai = AIEngine()
+    q, resp, audio = ai.handle_voice_text_command("Czy mogę jechać dalej?", {"dtc_codes": []})
+    assert q == "Czy mogę jechać dalej?"
+    assert "Możesz kontynuować" in resp
+    assert len(audio) > 44
+

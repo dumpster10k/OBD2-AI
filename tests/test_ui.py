@@ -486,3 +486,76 @@ def test_car_doctor_ui_settings_panel_and_interactions():
     # Wywołanie połączenia z UI
     ui.on_connect_obd()
     assert len(ui.connection_status_label.text) > 0
+
+
+def test_dashboard_controller_voice_features():
+    fake_conn = FakeOBDConnection(dtc=["P0300"], rpm=2500, speed=60, coolant=92, voltage=13.8)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    controller.refresh_telemetry()
+    controller.scan_dtc_and_diagnose()
+
+    # Szybka komenda tekstowa
+    q, ans, audio = controller.handle_quick_voice_command("Jaka jest temperatura płynu chłodzącego?")
+    assert "temperatura" in q.lower()
+    assert "92°C" in ans
+    assert len(audio) > 0
+    assert controller.last_voice_query == q
+    assert controller.last_voice_response == ans
+    assert len(controller.last_voice_audio) > 0
+    assert "Odpowiedź" in controller.voice_status_text
+
+    # Nagranie i przetworzenie głosu
+    q2, ans2, audio2 = controller.record_and_handle_voice(duration_sec=0.5)
+    assert len(q2) > 0
+    assert len(ans2) > 0
+    assert len(audio2) > 0
+
+
+def test_car_doctor_ui_voice_card_and_interactions():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=850, speed=0, coolant=88, voltage=14.1)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    controller.refresh_telemetry()
+    ui = CarDoctorUI(controller=controller)
+
+    # Weryfikacja kontrolek asystenta głosowego
+    assert hasattr(ui, "voice_card")
+    assert hasattr(ui, "btn_cmd_temp")
+    assert hasattr(ui, "btn_cmd_volt")
+    assert hasattr(ui, "btn_cmd_dtc")
+    assert hasattr(ui, "btn_cmd_safe")
+    assert hasattr(ui, "btn_cmd_speed")
+    assert hasattr(ui, "btn_cmd_help")
+    assert hasattr(ui, "btn_voice_record")
+    assert hasattr(ui, "voice_custom_input")
+    assert hasattr(ui, "btn_voice_send")
+    assert hasattr(ui, "voice_status_label")
+    assert hasattr(ui, "voice_response_label")
+
+    # Kliknięcie szybkiej komendy - temperatura
+    ui.on_quick_voice_command("Jaka jest temperatura płynu chłodzącego?")
+    assert "Komenda" in ui.voice_status_label.text
+    assert "88°C" in ui.voice_response_label.text
+
+    # Kliknięcie nagrywania mikrofonu
+    ui.on_voice_record_button()
+    assert "Rozpoznano" in ui.voice_status_label.text
+    assert len(ui.voice_response_label.text) > 0
+
+    # Wpisanie własnego pytania i kliknięcie wyślij
+    ui.voice_custom_input.text = "Czy mogę bezpiecznie jechać dalej?"
+    ui.on_send_custom_voice_query()
+    assert "Zapytanie" in ui.voice_status_label.text
+    assert "Możesz kontynuować" in ui.voice_response_label.text
+
+    # Wysłanie pustego pytania (fallback do 'Co z autem?')
+    ui.voice_custom_input.text = ""
+    ui.on_send_custom_voice_query()
+    assert "Co z autem?" in ui.voice_status_label.text
+
+    # Główny przycisk asystenta w panelu akcji
+    ui.on_voice_assistant()
+    assert "Komenda" in ui.voice_status_label.text
+    assert "Odpowiedź asystenta głosowego" in ui.report_summary_label.text
+

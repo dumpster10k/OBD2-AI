@@ -60,6 +60,14 @@ class AIEngine:
         """Przetwarza komendę głosową kierowcy (STT -> Analiza -> TTS)."""
         return self.voice.handle_voice_query(audio_data, vehicle_context=vehicle_context)
 
+    def handle_voice_text_command(
+        self,
+        text_query: str,
+        vehicle_context: Optional[dict[str, Any]] = None,
+    ) -> tuple[str, str, bytes]:
+        """Przetwarza komendę tekstową przez asystenta mowy (Analiza -> TTS)."""
+        return self.voice.handle_text_query(text_query, vehicle_context=vehicle_context)
+
     def suggest_sensor_formula(self, sensor_description: str):
         if "oil" in sensor_description.lower():
             return {"pid": "221126", "formula": "(A*256 + B)/10", "unit": "°C"}
