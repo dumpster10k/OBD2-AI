@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import sys
 import threading
 from collections.abc import Callable
@@ -26,11 +27,20 @@ class WidgetStub:
         self.width = kwargs.get("width", 100)
         self.pos = (0, 0)
         self.size = (100, 100)
+        self.center_x = 50
+        self.center_y = 50
         for k, v in kwargs.items():
             setattr(self, k, v)
 
     def add_widget(self, widget: Any, *args, **kwargs) -> None:
         self.children.append(widget)
+
+    def remove_widget(self, widget: Any, *args, **kwargs) -> None:
+        if widget in self.children:
+            self.children.remove(widget)
+
+    def clear_widgets(self, *args, **kwargs) -> None:
+        self.children.clear()
 
     def bind(self, **kwargs) -> None:
         pass
@@ -134,6 +144,12 @@ from services.speech_service import (
 )
 from services.telemetry_harvester import TelemetryHarvester
 from services.telemetry_logger import TelemetryLogger
+from services.telemetry_metrics import (
+    STANDARD_METRIC_THRESHOLDS,
+    calculate_series_stats,
+    evaluate_metric_status,
+    value_to_gauge_angle,
+)
 from services.user_preferences import AgentAnalysisMode, UserPreferencesManager
 from services.vehicle_profiler import VehicleProfile, VehicleProfiler
 
@@ -461,6 +477,111 @@ class TelemetryChart(StyledCard):
             self._line_c.rgba = (0.06, 0.73, 0.85, 1.0)
 
         self._trend_line.points = calc_points
+
+
+class DialGaugeWidget(StyledCard):
+    """Zegar tarczowy (Circular Dial Gauge) w stylu Car Scanner z dynamiczną wskazówką i strefami."""
+
+    def __init__(self, metric_id: str = "rpm", **kwargs):
+        super().__init__(
+            orientation="vertical",
+            size_hint_y=None,
+            height=190,
+            padding=[12, 10, 12, 10],
+            spacing=4,
+            **kwargs,
+        )
+        self.metric_id = metric_id
+        self.threshold = STANDARD_METRIC_THRESHOLDS.get(metric_id)
+        self.current_value = 0.0
+        self.gauge_angle = -135.0
+
+        header_box = BoxLayout(size_hint_y=None, height=22)
+        title_text = self.threshold.name.upper() if self.threshold else metric_id.upper()
+        self.title_label = Label(
+            text=f"⏱️ {title_text}",
+            font_size="11sp",
+            bold=True,
+            color=COLOR_TEXT_MUTED,
+            size_hint_y=None,
+            height=20,
+        )
+        header_box.add_widget(self.title_label)
+        self.add_widget(header_box)
+
+        # Wyświetlacz cyfrowy wartości na środku
+        self.value_label = Label(
+            text="0 RPM",
+            font_size="20sp",
+            bold=True,
+            color=(0.06, 0.73, 0.85, 1.0),
+            size_hint_y=None,
+            height=28,
+        )
+        self.add_widget(self.value_label)
+
+        # Obszar tarczy (Canvas Kivy)
+        if KIVY_AVAILABLE:
+            self.dial_area = Widget(size_hint=(1, 1))
+            with self.dial_area.canvas:
+                self._arc_bg_color = Color(0.18, 0.22, 0.30, 0.7)
+                self._arc_bg = Line(circle=(50, 50, 35, -135, 135), width=3.5)
+                self._needle_color = Color(0.06, 0.73, 0.85, 1.0)
+                self._needle_line = Line(points=[], width=2.5)
+            self.dial_area.bind(pos=self._redraw, size=self._redraw)
+            self.add_widget(self.dial_area)
+        else:
+            self.dial_area = Widget(size_hint=(1, 1))
+            self.add_widget(self.dial_area)
+
+        # Etykieta strefy statusu
+        self.status_badge = Label(
+            text="Status: Norma",
+            font_size="10sp",
+            size_hint_y=None,
+            height=18,
+            color=COLOR_SUCCESS,
+        )
+        self.add_widget(self.status_badge)
+
+    def update_value(self, val: float) -> None:
+        self.current_value = float(val)
+        min_lim = self.threshold.min_limit if self.threshold else 0.0
+        max_lim = self.threshold.max_limit if self.threshold else 8000.0
+        unit = self.threshold.unit if self.threshold else ""
+        self.gauge_angle = value_to_gauge_angle(self.current_value, min_lim, max_lim)
+        if unit == "V":
+            self.value_label.text = f"{self.current_value:.1f} {unit}"
+        else:
+            self.value_label.text = f"{int(self.current_value)} {unit}"
+
+        status = evaluate_metric_status(self.metric_id, self.current_value)
+        if status == "critical":
+            self.status_badge.text = "Status: KRYTYCZNY"
+            self.status_badge.color = COLOR_DANGER
+            self.value_label.color = COLOR_DANGER
+        elif status == "warning":
+            self.status_badge.text = "Status: OSTRZEŻENIE"
+            self.status_badge.color = COLOR_WARNING
+            self.value_label.color = COLOR_WARNING
+        else:
+            self.status_badge.text = "Status: OPTYMALNY"
+            self.status_badge.color = COLOR_SUCCESS
+            self.value_label.color = (0.06, 0.73, 0.85, 1.0)
+
+        self._redraw()
+
+    def _redraw(self, *args) -> None:
+        if not KIVY_AVAILABLE or not hasattr(self, "_needle_line"):
+            return
+        cx = self.dial_area.center_x
+        cy = self.dial_area.center_y
+        r = max(10.0, min(self.dial_area.width, self.dial_area.height) * 0.38)
+        self._arc_bg.circle = (cx, cy, r, -135, 135)
+        rad = math.radians(90.0 - self.gauge_angle)
+        nx = cx + (r * 0.85 * math.cos(rad))
+        ny = cy + (r * 0.85 * math.sin(rad))
+        self._needle_line.points = [cx, cy, nx, ny]
 
 
 class DashboardController:
@@ -1071,11 +1192,17 @@ class CarDoctorUI(BoxLayout):
         self.controller = controller or DashboardController()
         self.controller.load_available_speech_models()  # Inicjalizacja modeli mowy
 
+        self.is_landscape: bool = False
+        self.screen_width: float = 800.0
+        self.screen_height: float = 600.0
+
         if KIVY_AVAILABLE:
             try:
                 Window.clearcolor = COLOR_BG
+                Window.bind(size=self._on_window_size)
             except Exception:
                 pass
+        self.bind(size=self._on_self_size)
 
         scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
         self.content_box = BoxLayout(
@@ -1093,31 +1220,154 @@ class CarDoctorUI(BoxLayout):
         header_card = StyledCard(
             orientation="vertical",
             size_hint_y=None,
-            height=85,
-            padding=[16, 12, 16, 12],
-            spacing=4,
+            height=75,
+            padding=[16, 10, 16, 10],
+            spacing=3,
         )
         self.title_label = Label(
             text="⚡ AI CAR DOCTOR",
             font_size="20sp",
             bold=True,
             size_hint_y=None,
-            height=28,
+            height=26,
             color=(0.95, 0.96, 0.98, 1.0),
         )
         self.status_label = Label(
             text="AI Car Doctor — gotowy do diagnostyki",
-            font_size="13sp",
+            font_size="12sp",
             size_hint_y=None,
-            height=22,
+            height=20,
             color=COLOR_TEXT_MUTED,
         )
         header_card.add_widget(self.title_label)
         header_card.add_widget(self.status_label)
-        self.content_box.add_widget(header_card)
 
         # ---------------------------------------------------------------------
-        # 2. Panel selektora modeli mowy (STT/TTS)
+        # Pasek szybkiego podglądu parametrów w stylu Car Scanner (Top Quick Status Bar)
+        # ---------------------------------------------------------------------
+        self.quick_status_bar = StyledCard(
+            orientation="horizontal",
+            size_hint_y=None,
+            height=34,
+            padding=[10, 4, 10, 4],
+            spacing=6,
+            bg_color=(0.08, 0.11, 0.18, 1.0),
+        )
+        self.bar_obd_status = Label(
+            text="🔌 OBD: Rozłączony",
+            font_size="10sp",
+            bold=True,
+            color=COLOR_TEXT_MUTED,
+            size_hint_x=0.25,
+        )
+        self.bar_vehicle_profile = Label(
+            text="🚗 Profil: Standard",
+            font_size="10sp",
+            color=COLOR_PRIMARY,
+            size_hint_x=0.28,
+        )
+        self.bar_voltage = Label(
+            text="🔋 0.0 V",
+            font_size="10sp",
+            bold=True,
+            color=COLOR_SUCCESS,
+            size_hint_x=0.17,
+        )
+        self.bar_speed = Label(
+            text="🏎️ 0 km/h",
+            font_size="10sp",
+            bold=True,
+            color=(0.06, 0.73, 0.85, 1.0),
+            size_hint_x=0.18,
+        )
+        self.bar_mic = Label(
+            text="🎙️ Mic: ON",
+            font_size="10sp",
+            color=COLOR_SUCCESS if self.controller.mic_enabled else COLOR_DANGER,
+            size_hint_x=0.14,
+        )
+        self.quick_status_bar.add_widget(self.bar_obd_status)
+        self.quick_status_bar.add_widget(self.bar_vehicle_profile)
+        self.quick_status_bar.add_widget(self.bar_voltage)
+        self.quick_status_bar.add_widget(self.bar_speed)
+        self.quick_status_bar.add_widget(self.bar_mic)
+
+        # ---------------------------------------------------------------------
+        # Pasek zakładek w stylu Car Scanner (Tab Navigation Bar)
+        # ---------------------------------------------------------------------
+        self.tab_nav_bar = GridLayout(cols=6, spacing=4, size_hint_y=None, height=36)
+
+        self.btn_tab_dash = Button(
+            text="🏎️ Pulpit",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=COLOR_PRIMARY,
+        )
+        self.btn_tab_dash.bind(on_press=lambda _b: self.set_active_tab("dashboard"))
+        self.tab_nav_bar.add_widget(self.btn_tab_dash)
+
+        self.btn_tab_sensors = Button(
+            text="📊 Sensory",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.16, 0.20, 0.28, 1.0),
+        )
+        self.btn_tab_sensors.bind(on_press=lambda _b: self.set_active_tab("all_sensors"))
+        self.tab_nav_bar.add_widget(self.btn_tab_sensors)
+
+        self.btn_tab_charts = Button(
+            text="📈 Wykresy",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.16, 0.20, 0.28, 1.0),
+        )
+        self.btn_tab_charts.bind(on_press=lambda _b: self.set_active_tab("charts"))
+        self.tab_nav_bar.add_widget(self.btn_tab_charts)
+
+        self.btn_tab_diag = Button(
+            text="🚨 Diagnoza",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.16, 0.20, 0.28, 1.0),
+        )
+        self.btn_tab_diag.bind(on_press=lambda _b: self.set_active_tab("diagnostics"))
+        self.tab_nav_bar.add_widget(self.btn_tab_diag)
+
+        self.btn_tab_settings = Button(
+            text="⚙️ Opcje",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.16, 0.20, 0.28, 1.0),
+        )
+        self.btn_tab_settings.bind(on_press=lambda _b: self.set_active_tab("settings"))
+        self.tab_nav_bar.add_widget(self.btn_tab_settings)
+
+        self.btn_tab_all = Button(
+            text="📋 Pełny",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.16, 0.20, 0.28, 1.0),
+        )
+        self.btn_tab_all.bind(on_press=lambda _b: self.set_active_tab("all"))
+        self.tab_nav_bar.add_widget(self.btn_tab_all)
+
+        # Główny kontener na sekcje
+        self.tab_container = BoxLayout(
+            orientation="vertical",
+            spacing=14,
+            size_hint_y=None,
+        )
+        if hasattr(self.tab_container, "setter"):
+            self.tab_container.bind(minimum_height=self.tab_container.setter("height"))
+
+        # ---------------------------------------------------------------------
+        # A. Modele mowy (STT/TTS)
         # ---------------------------------------------------------------------
         speech_selector_box = BoxLayout(orientation="vertical", size_hint_y=None, height=140, spacing=5)
         self.speech_status_label = Label(
@@ -1129,16 +1379,13 @@ class CarDoctorUI(BoxLayout):
         )
         speech_selector_box.add_widget(self.speech_status_label)
 
-        # Grid dla STT i TTS
         self.speech_grid = GridLayout(cols=2, spacing=5, size_hint_y=None)
-        self.speech_grid.cols = 2  # Dwie kolumny: STT po lewej, TTS po prawej
-
+        self.speech_grid.cols = 2
         self._create_speech_model_cards()
         speech_selector_box.add_widget(self.speech_grid)
-        self.content_box.add_widget(speech_selector_box)
 
         # ---------------------------------------------------------------------
-        # 3. Panel selektora modeli AI
+        # B. Modele AI (LLM)
         # ---------------------------------------------------------------------
         model_selector_box = BoxLayout(orientation="vertical", size_hint_y=None, height=160, spacing=5)
         self.model_status_label = Label(
@@ -1149,25 +1396,23 @@ class CarDoctorUI(BoxLayout):
             bold=True,
         )
         model_selector_box.add_widget(self.model_status_label)
-
         self.models_grid = GridLayout(cols=1, spacing=5, size_hint_y=None)
-
         self._create_model_cards()
         model_selector_box.add_widget(self.models_grid)
-        self.content_box.add_widget(model_selector_box)
 
         # ---------------------------------------------------------------------
-        # 4. Pulpit telemetrii na żywo (Siatka 2x2 kart parametrów)
+        # C. Kafelki telemetrii na żywo z Min/Max
         # ---------------------------------------------------------------------
-        telemetry_container = StyledCard(
+        self.telemetry_container = StyledCard(
             orientation="vertical",
             size_hint_y=None,
-            height=240,
+            height=265,
             padding=[14, 14, 14, 14],
             spacing=10,
         )
+        telemetry_container = self.telemetry_container
 
-        self.grid_telemetry = GridLayout(cols=2, spacing=10, size_hint_y=None, height=135)
+        self.grid_telemetry = GridLayout(cols=2, spacing=10, size_hint_y=None, height=155)
 
         card_rpm = StyledCard(
             orientation="vertical",
@@ -1176,7 +1421,11 @@ class CarDoctorUI(BoxLayout):
         )
         card_rpm.add_widget(Label(text="OBROTY", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16))
         self.rpm_label = Label(text="Obroty: 0 RPM", font_size="17sp", bold=True, color=(0.06, 0.73, 0.85, 1.0))
+        self.rpm_min_max_label = Label(
+            text="Min: 0 | Max: 0", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14
+        )
         card_rpm.add_widget(self.rpm_label)
+        card_rpm.add_widget(self.rpm_min_max_label)
         self.grid_telemetry.add_widget(card_rpm)
 
         card_speed = StyledCard(
@@ -1188,7 +1437,11 @@ class CarDoctorUI(BoxLayout):
             Label(text="PRĘDKOŚĆ", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16)
         )
         self.speed_label = Label(text="Prędkość: 0 km/h", font_size="17sp", bold=True, color=(0.06, 0.73, 0.85, 1.0))
+        self.speed_min_max_label = Label(
+            text="Min: 0 | Max: 0", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14
+        )
         card_speed.add_widget(self.speed_label)
+        card_speed.add_widget(self.speed_min_max_label)
         self.grid_telemetry.add_widget(card_speed)
 
         card_coolant = StyledCard(
@@ -1200,7 +1453,11 @@ class CarDoctorUI(BoxLayout):
             Label(text="PŁYN CHŁODZĄCY", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16)
         )
         self.coolant_label = Label(text="Temp. płynu: 0 °C", font_size="17sp", bold=True, color=(0.16, 0.80, 0.53, 1.0))
+        self.coolant_min_max_label = Label(
+            text="Min: 0°C | Max: 0°C", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14
+        )
         card_coolant.add_widget(self.coolant_label)
+        card_coolant.add_widget(self.coolant_min_max_label)
         self.grid_telemetry.add_widget(card_coolant)
 
         card_volt = StyledCard(
@@ -1212,7 +1469,11 @@ class CarDoctorUI(BoxLayout):
             Label(text="AKUMULATOR", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16)
         )
         self.voltage_label = Label(text="Napięcie: 0.0 V", font_size="17sp", bold=True, color=(0.16, 0.80, 0.53, 1.0))
+        self.voltage_min_max_label = Label(
+            text="Min: 0.0V | Max: 0.0V", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14
+        )
         card_volt.add_widget(self.voltage_label)
+        card_volt.add_widget(self.voltage_min_max_label)
         self.grid_telemetry.add_widget(card_volt)
 
         telemetry_container.add_widget(self.grid_telemetry)
@@ -1229,16 +1490,13 @@ class CarDoctorUI(BoxLayout):
         self.refresh_telemetry_btn.bind(on_press=self.on_refresh_telemetry)
         telemetry_container.add_widget(self.refresh_telemetry_btn)
 
-        self.content_box.add_widget(telemetry_container)
-
         # ---------------------------------------------------------------------
-        # 3. Wykres przebiegu parametrów (Telemetry Trend Chart)
+        # D. Wykres trendu
         # ---------------------------------------------------------------------
         self.chart = TelemetryChart()
-        self.content_box.add_widget(self.chart)
 
         # ---------------------------------------------------------------------
-        # 4. Panel ustawień połączenia (Bluetooth Mobile / USB Laptop)
+        # E. Panel ustawień połączenia OBD-II
         # ---------------------------------------------------------------------
         settings_card = StyledCard(
             orientation="vertical",
@@ -1376,10 +1634,8 @@ class CarDoctorUI(BoxLayout):
         )
         settings_card.add_widget(self.connection_status_label)
 
-        self.content_box.add_widget(settings_card)
-
         # ---------------------------------------------------------------------
-        # 5. Panel symulatora awarii & scenariuszy demo
+        # F. Symulator usterek
         # ---------------------------------------------------------------------
         sim_container = StyledCard(
             orientation="vertical",
@@ -1466,10 +1722,9 @@ class CarDoctorUI(BoxLayout):
         scenarios_grid.add_widget(self.btn_scen_volt)
 
         sim_container.add_widget(scenarios_grid)
-        self.content_box.add_widget(sim_container)
 
         # ---------------------------------------------------------------------
-        # 6. Panel raportu diagnostycznego AI
+        # G. Raport diagnostyczny AI
         # ---------------------------------------------------------------------
         self.report_card = StyledCard(
             orientation="vertical",
@@ -1507,10 +1762,9 @@ class CarDoctorUI(BoxLayout):
             color=(0.88, 0.90, 0.94, 1.0),
         )
         self.report_card.add_widget(self.report_summary_label)
-        self.content_box.add_widget(self.report_card)
 
         # ---------------------------------------------------------------------
-        # 6. Panel asystenta głosowego (Hands-Free Speech AI: Whisper / Piper)
+        # H. Asystent głosowy
         # ---------------------------------------------------------------------
         self.voice_card = StyledCard(
             orientation="vertical",
@@ -1664,19 +1918,10 @@ class CarDoctorUI(BoxLayout):
             color=(0.90, 0.92, 0.96, 1.0),
         )
         self.voice_card.add_widget(self.voice_response_label)
-        self.content_box.add_widget(self.voice_card)
 
         # ---------------------------------------------------------------------
-        # 7. Panel akcji (Skanowanie, Asystent głosowy, Dwuetapowe kasowanie, Rejestrator)
+        # I. Przyciski akcji diagnostycznych i logowania
         # ---------------------------------------------------------------------
-        actions_card = StyledCard(
-            orientation="vertical",
-            size_hint_y=None,
-            height=234,
-            padding=[16, 14, 16, 14],
-            spacing=10,
-        )
-
         self.scan_btn = Button(
             text="🔍 Skanuj błędy OBD i diagnozuj AI",
             font_size="14sp",
@@ -1687,7 +1932,6 @@ class CarDoctorUI(BoxLayout):
             background_color=COLOR_PRIMARY,
         )
         self.scan_btn.bind(on_press=self.on_scan_errors)
-        actions_card.add_widget(self.scan_btn)
 
         self.voice_btn = Button(
             text="🎙️ Asystent głosowy (Zapytaj AI)",
@@ -1699,11 +1943,8 @@ class CarDoctorUI(BoxLayout):
             background_color=COLOR_VOICE,
         )
         self.voice_btn.bind(on_press=self.on_voice_assistant)
-        actions_card.add_widget(self.voice_btn)
 
-        # Rząd rejestratora trasy (SQLite) i eksportu CSV
         logging_row = BoxLayout(orientation="horizontal", spacing=8, size_hint_y=None, height=44)
-
         self.btn_toggle_logging = Button(
             text="⏺️ Rejestruj trasę: WYŁ",
             font_size="13sp",
@@ -1725,11 +1966,8 @@ class CarDoctorUI(BoxLayout):
         )
         self.btn_export_csv.bind(on_press=self.on_export_csv)
         logging_row.add_widget(self.btn_export_csv)
-        actions_card.add_widget(logging_row)
 
-        # Rząd trybu pracy asystenta AI (Live vs EKO bateria) oraz raportu po trasie
         agent_mode_row = BoxLayout(orientation="horizontal", spacing=8, size_hint_y=None, height=44)
-
         mode_titles = {
             "live": "🔴 Agent: Na żywo",
             "post_trip_eco": "🔋 Agent: EKO (Bateria)",
@@ -1757,7 +1995,6 @@ class CarDoctorUI(BoxLayout):
         )
         self.btn_post_trip_report.bind(on_press=self.on_generate_post_trip_report)
         agent_mode_row.add_widget(self.btn_post_trip_report)
-        actions_card.add_widget(agent_mode_row)
 
         self.clear_btn = Button(
             text="🗑️ Skasuj kody błędów DTC",
@@ -1769,9 +2006,122 @@ class CarDoctorUI(BoxLayout):
             background_color=(0.18, 0.22, 0.30, 1.0),
         )
         self.clear_btn.bind(on_press=self.on_clear_dtc)
-        actions_card.add_widget(self.clear_btn)
 
-        self.content_box.add_widget(actions_card)
+        # ---------------------------------------------------------------------
+        # BUDOWANIE SEKCJI (CAR SCANNER MODULAR SCREENS)
+        # ---------------------------------------------------------------------
+
+        # 1. Sekcja Pulpit (Dashboard)
+        self.section_dashboard = BoxLayout(orientation="vertical", spacing=12, size_hint_y=None)
+        if hasattr(self.section_dashboard, "setter"):
+            self.section_dashboard.bind(minimum_height=self.section_dashboard.setter("height"))
+        self.section_dashboard.add_widget(telemetry_container)
+        self.dial_rpm = DialGaugeWidget("rpm")
+        self.section_dashboard.add_widget(self.dial_rpm)
+        self.section_dashboard.add_widget(sim_container)
+
+        # 2. Sekcja Wszystkie sensory (All Sensors - Live Data)
+        self.section_all_sensors = StyledCard(
+            orientation="vertical",
+            size_hint_y=None,
+            height=500,
+            padding=[14, 12, 14, 12],
+            spacing=8,
+        )
+        sensors_hdr = BoxLayout(size_hint_y=None, height=26, spacing=6)
+        sensors_hdr.add_widget(
+            Label(
+                text="📊 WSZYSTKIE CZUJNIKI (LIVE DATA)",
+                font_size="13sp",
+                bold=True,
+                color=COLOR_TEXT_MUTED,
+                size_hint_x=0.6,
+                halign="left",
+            )
+        )
+        self.btn_refresh_all_sensors = Button(
+            text="🔄 Odśwież listę",
+            font_size="11sp",
+            bold=True,
+            size_hint_x=0.4,
+            background_normal="",
+            background_color=(0.18, 0.22, 0.30, 1.0),
+        )
+        self.btn_refresh_all_sensors.bind(on_press=lambda _b: self.update_all_sensors_ui())
+        sensors_hdr.add_widget(self.btn_refresh_all_sensors)
+        self.section_all_sensors.add_widget(sensors_hdr)
+
+        search_box = BoxLayout(size_hint_y=None, height=36, spacing=6)
+        self.sensor_search_input = TextInput(
+            hint_text="🔍 Filtruj sensory (np. rpm, ciecz, boost, olej, PID)...",
+            multiline=False,
+            font_size="12sp",
+            background_color=(0.10, 0.14, 0.20, 1.0),
+            foreground_color=(1.0, 1.0, 1.0, 1.0),
+        )
+        self.sensor_search_input.bind(text=self.on_sensor_search_change)
+        search_box.add_widget(self.sensor_search_input)
+        self.section_all_sensors.add_widget(search_box)
+
+        sensors_scroll = ScrollView(size_hint=(1, 1), do_scroll_x=False)
+        self.all_sensors_grid = GridLayout(cols=2, spacing=8, size_hint_y=None)
+        if hasattr(self.all_sensors_grid, "setter"):
+            self.all_sensors_grid.bind(minimum_height=self.all_sensors_grid.setter("height"))
+        sensors_scroll.add_widget(self.all_sensors_grid)
+        self.section_all_sensors.add_widget(sensors_scroll)
+
+        # 3. Sekcja Wykresy (Charts)
+        self.section_charts = BoxLayout(orientation="vertical", spacing=12, size_hint_y=None)
+        if hasattr(self.section_charts, "setter"):
+            self.section_charts.bind(minimum_height=self.section_charts.setter("height"))
+        self.section_charts.add_widget(self.chart)
+
+        # 4. Sekcja Diagnostyka & AI (Diagnostics)
+        self.section_diagnostics = BoxLayout(orientation="vertical", spacing=12, size_hint_y=None)
+        if hasattr(self.section_diagnostics, "setter"):
+            self.section_diagnostics.bind(minimum_height=self.section_diagnostics.setter("height"))
+        self.section_diagnostics.add_widget(self.report_card)
+        self.section_diagnostics.add_widget(self.voice_card)
+
+        diag_actions_card = StyledCard(
+            orientation="vertical",
+            size_hint_y=None,
+            height=145,
+            padding=[14, 12, 14, 12],
+            spacing=8,
+        )
+        diag_actions_card.add_widget(self.scan_btn)
+        diag_actions_card.add_widget(self.voice_btn)
+        diag_actions_card.add_widget(self.clear_btn)
+        self.section_diagnostics.add_widget(diag_actions_card)
+
+        # 5. Sekcja Ustawienia (Settings)
+        self.section_settings = BoxLayout(orientation="vertical", spacing=12, size_hint_y=None)
+        if hasattr(self.section_settings, "setter"):
+            self.section_settings.bind(minimum_height=self.section_settings.setter("height"))
+        self.section_settings.add_widget(settings_card)
+        self.section_settings.add_widget(speech_selector_box)
+        self.section_settings.add_widget(model_selector_box)
+
+        logging_card = StyledCard(
+            orientation="vertical",
+            size_hint_y=None,
+            height=110,
+            padding=[14, 12, 14, 12],
+            spacing=8,
+        )
+        logging_card.add_widget(logging_row)
+        logging_card.add_widget(agent_mode_row)
+        self.section_settings.add_widget(logging_card)
+
+        # Dołączenie stałych elementów do content_box
+        self.content_box.add_widget(header_card)
+        self.content_box.add_widget(self.quick_status_bar)
+        self.content_box.add_widget(self.tab_nav_bar)
+        self.content_box.add_widget(self.tab_container)
+
+        # Domyślnie aktywuj pulpit
+        self.set_active_tab("dashboard")
 
         scroll.add_widget(self.content_box)
         self.add_widget(scroll)
@@ -2042,14 +2392,212 @@ class CarDoctorUI(BoxLayout):
         self.mic_btn.text = new_text
         self.mic_btn.color = new_color
 
+    def set_active_tab(self, tab_name: str) -> None:
+        """Przełącza aktywny widok w stylu zakładek Car Scanner."""
+        self.active_tab = tab_name
+        self.tab_container.clear_widgets()
+
+        tab_buttons = {
+            "dashboard": self.btn_tab_dash,
+            "all_sensors": self.btn_tab_sensors,
+            "charts": self.btn_tab_charts,
+            "diagnostics": self.btn_tab_diag,
+            "settings": self.btn_tab_settings,
+            "all": self.btn_tab_all,
+        }
+        for name, btn in tab_buttons.items():
+            if name == tab_name:
+                btn.background_color = COLOR_PRIMARY
+            else:
+                btn.background_color = (0.16, 0.20, 0.28, 1.0)
+
+        if tab_name == "dashboard":
+            self.tab_container.add_widget(self.section_dashboard)
+        elif tab_name == "all_sensors":
+            self.tab_container.add_widget(self.section_all_sensors)
+            self.update_all_sensors_ui(getattr(self.sensor_search_input, "text", ""))
+        elif tab_name == "charts":
+            self.tab_container.add_widget(self.section_charts)
+        elif tab_name == "diagnostics":
+            self.tab_container.add_widget(self.section_diagnostics)
+        elif tab_name == "settings":
+            self.tab_container.add_widget(self.section_settings)
+        elif tab_name == "all":
+            self.tab_container.add_widget(self.section_dashboard)
+            self.tab_container.add_widget(self.section_all_sensors)
+            self.tab_container.add_widget(self.section_charts)
+            self.tab_container.add_widget(self.section_diagnostics)
+            self.tab_container.add_widget(self.section_settings)
+            self.update_all_sensors_ui(getattr(self.sensor_search_input, "text", ""))
+
+    def _on_window_size(self, _window: Any, size: tuple[float, float]) -> None:
+        """Callback Kivy Window przy zmianie rozmiaru okna lub obrocie ekranu."""
+        self.apply_responsive_layout(size[0], size[1])
+
+    def _on_self_size(self, _instance: Any, size: tuple[float, float]) -> None:
+        """Callback przy zmianie rozmiaru widżetu głównego."""
+        if size[0] > 0 and size[1] > 0:
+            self.apply_responsive_layout(size[0], size[1])
+
+    def apply_responsive_layout(self, width: float, height: float) -> None:
+        """Dostosowuje układ elementów do rozmiaru i orientacji ekranu (poziom / pion)."""
+        if width <= 0 or height <= 0:
+            return
+
+        is_landscape = width > height
+        self.is_landscape = is_landscape
+        self.screen_width = width
+        self.screen_height = height
+
+        # 1. Dostosowanie paska zakładek (Tab Nav Bar)
+        if width < 480:
+            # Wąski ekran w pionie (smartphone portrait): 2 rzędy po 3 przyciski
+            self.tab_nav_bar.cols = 3
+            self.tab_nav_bar.height = 72
+        else:
+            # Szeroki ekran lub poziom: 1 rząd 6 przycisków
+            self.tab_nav_bar.cols = 6
+            self.tab_nav_bar.height = 36
+
+        # 2. Dostosowanie kafelków telemetrii (Grid Telemetry)
+        if is_landscape and width >= 780:
+            # Tryb poziomy / HUD: 4 kolumny w jednym rzędzie
+            self.grid_telemetry.cols = 4
+            self.grid_telemetry.height = 85
+            if hasattr(self, "telemetry_container"):
+                self.telemetry_container.height = 165
+        else:
+            # Tryb pionowy lub kompaktowy: 2 kolumny
+            self.grid_telemetry.cols = 2
+            self.grid_telemetry.height = 155
+            if hasattr(self, "telemetry_container"):
+                self.telemetry_container.height = 265
+
+        # 3. Dostosowanie siatki wszystkich sensorów (All Sensors Grid)
+        if is_landscape and width >= 900:
+            self.all_sensors_grid.cols = 3
+        elif width < 480:
+            self.all_sensors_grid.cols = 1
+        else:
+            self.all_sensors_grid.cols = 2
+
+    def on_sensor_search_change(self, _instance: Any, value: str) -> None:
+        """Filtruje listę wszystkich czujników podczas wpisywania tekstu."""
+        self.update_all_sensors_ui(filter_text=value)
+
+    def update_all_sensors_ui(self, filter_text: str = "") -> None:
+        """Odświeża kafelki w sekcji Wszystkie sensory."""
+        self.all_sensors_grid.clear_widgets()
+        query = filter_text.strip().lower() if filter_text else ""
+        sensors = self.controller.sensor_manager.list_sensors()
+        telemetry = self.controller.telemetry
+
+        count = 0
+        for s in sensors:
+            full_pid = f"{s.mode}{s.pid}".lower()
+            if (
+                query
+                and query not in s.name.lower()
+                and query not in s.pid.lower()
+                and query not in full_pid
+                and query not in s.category.lower()
+                and query not in s.short_name.lower()
+            ):
+                continue
+            if count >= 30:
+                break
+
+            val_str = "--"
+            if s.short_name and s.short_name in telemetry:
+                val_str = f"{telemetry[s.short_name]} {s.unit}"
+            elif s.pid in ("0C", "010C"):
+                val_str = f"{telemetry.get('rpm', 0)} RPM"
+            elif s.pid in ("0D", "010D"):
+                val_str = f"{telemetry.get('speed', 0)} km/h"
+            elif s.pid in ("05", "0105"):
+                val_str = f"{telemetry.get('coolant_temp', 0)} °C"
+            elif s.pid in ("42", "0142"):
+                val_str = f"{telemetry.get('voltage', 0.0):.1f} V"
+
+            card = StyledCard(
+                orientation="vertical",
+                size_hint_y=None,
+                height=65,
+                padding=[8, 6, 8, 6],
+                bg_color=(0.10, 0.14, 0.22, 1.0),
+            )
+            display_pid = f"{s.mode}{s.pid}" if s.mode else s.pid
+            title = Label(
+                text=f"[{display_pid}] {s.name[:24]}",
+                font_size="10sp",
+                color=COLOR_TEXT_MUTED,
+                size_hint_y=None,
+                height=16,
+                halign="left",
+            )
+            val_lbl = Label(
+                text=val_str,
+                font_size="14sp",
+                bold=True,
+                color=(0.06, 0.73, 0.85, 1.0) if val_str != "--" else COLOR_TEXT_MUTED,
+                size_hint_y=None,
+                height=20,
+            )
+            sub_info = Label(
+                text=f"Kategoria: {s.category} | Eko: {s.ecu_target}",
+                font_size="9sp",
+                color=(0.45, 0.50, 0.60, 1.0),
+                size_hint_y=None,
+                height=14,
+            )
+            card.add_widget(title)
+            card.add_widget(val_lbl)
+            card.add_widget(sub_info)
+            self.all_sensors_grid.add_widget(card)
+            count += 1
+
     def update_telemetry_ui(self) -> None:
         t = self.controller.telemetry
-        self.rpm_label.text = f"Obroty: {t.get('rpm', 0)} RPM"
-        self.speed_label.text = f"Prędkość: {t.get('speed', 0)} km/h"
+        rpm = t.get("rpm", 0)
+        speed = t.get("speed", 0)
         coolant = t.get("coolant_temp", 0)
-        self.coolant_label.text = f"Temp. płynu: {coolant} °C"
         voltage = t.get("voltage", 0.0)
+
+        self.rpm_label.text = f"Obroty: {rpm} RPM"
+        self.speed_label.text = f"Prędkość: {speed} km/h"
+        self.coolant_label.text = f"Temp. płynu: {coolant} °C"
         self.voltage_label.text = f"Napięcie: {voltage:.1f} V"
+
+        # Obliczanie min/max w stylu Car Scanner ze statystyk próbkowania
+        rpm_stats = calculate_series_stats(self.controller.get_telemetry_history("rpm"))
+        speed_stats = calculate_series_stats(self.controller.get_telemetry_history("speed"))
+        cool_stats = calculate_series_stats(self.controller.get_telemetry_history("coolant_temp"))
+        volt_stats = calculate_series_stats(self.controller.get_telemetry_history("voltage"))
+
+        self.rpm_min_max_label.text = f"Min: {int(rpm_stats['min'])} | Max: {int(rpm_stats['max'])}"
+        self.speed_min_max_label.text = f"Min: {int(speed_stats['min'])} | Max: {int(speed_stats['max'])}"
+        self.coolant_min_max_label.text = f"Min: {int(cool_stats['min'])}°C | Max: {int(cool_stats['max'])}°C"
+        self.voltage_min_max_label.text = f"Min: {volt_stats['min']:.1f}V | Max: {volt_stats['max']:.1f}V"
+
+        # Aktualizacja zegara tarczowego
+        if hasattr(self, "dial_rpm"):
+            self.dial_rpm.update_value(rpm)
+
+        # Aktualizacja paska szybkiego podglądu (Top Quick Status Bar)
+        if hasattr(self, "bar_voltage"):
+            self.bar_voltage.text = f"🔋 {voltage:.1f} V"
+            self.bar_speed.text = f"🏎️ {int(speed)} km/h"
+            is_conn = self.controller.obd.is_connected()
+            self.bar_obd_status.text = "🟢 OBD: Połączono" if is_conn else "🔌 OBD: Rozłączony"
+            self.bar_obd_status.color = COLOR_SUCCESS if is_conn else COLOR_TEXT_MUTED
+            prof_name = (
+                getattr(self.controller.vehicle_profile, "engine_name", "Standard")
+                if self.controller.vehicle_profile
+                else "Standard"
+            )
+            self.bar_vehicle_profile.text = f"🚗 {prof_name[:16]}"
+            self.bar_mic.text = "🎙️ Mic: ON" if self.controller.mic_enabled else "🎙️ Mic: OFF"
+            self.bar_mic.color = COLOR_SUCCESS if self.controller.mic_enabled else COLOR_DANGER
 
         hist = self.controller.get_telemetry_history(self.chart.current_metric)
         self.chart.update_history(hist)
@@ -2065,6 +2613,10 @@ class CarDoctorUI(BoxLayout):
             self.voltage_label.color = COLOR_WARNING
         else:
             self.voltage_label.color = COLOR_SUCCESS
+
+        # Aktualizacja kafelków sensorów na żywo jeśli widok All Sensors jest aktywny
+        if hasattr(self, "active_tab") and self.active_tab in ("all_sensors", "all"):
+            self.update_all_sensors_ui(getattr(self.sensor_search_input, "text", ""))
 
     def on_select_connection_profile(self, profile_key: str) -> None:
         """Wybiera profil połączenia i aktualizuje pola w GUI."""
