@@ -388,3 +388,101 @@ def test_car_doctor_ui_simulation_and_chart_integration():
     ui.on_toggle_simulation()
     assert controller.simulation_mode is False
     assert "Symulacja: WYŁ" in ui.sim_toggle_btn.text
+
+
+def test_dashboard_controller_connection_profiles():
+    controller = DashboardController()
+
+    # Profil Mobile Bluetooth
+    prof_mobile = controller.apply_connection_profile("mobile_bt")
+    assert prof_mobile["type"] == "bluetooth"
+    assert prof_mobile["port"] == "OBDII"
+    assert controller.connection_config["port"] == "OBDII"
+
+    # Profil Laptop USB Linux
+    prof_linux = controller.apply_connection_profile("laptop_usb_linux")
+    assert prof_linux["type"] == "usb"
+    assert prof_linux["port"] == "/dev/ttyUSB0"
+    assert prof_linux["baudrate"] == 115200
+
+    # Ręczna zmiana parametrów
+    custom = controller.update_connection_settings(port="COM7", baudrate=38400, connection_type="usb")
+    assert custom["port"] == "COM7"
+    assert custom["baudrate"] == 38400
+
+
+def test_dashboard_controller_connect_and_disconnect_obd():
+    class ConnectableClient:
+        def __init__(self):
+            self.connected = False
+
+        def connect(self, port=None, baudrate=None):
+            if port == "VALID_PORT":
+                self.connected = True
+                return True
+            self.connected = False
+            return False
+
+        def disconnect(self):
+            self.connected = False
+
+        def is_connected(self):
+            return self.connected
+
+        def get_telemetry(self):
+            return {"rpm": 850, "speed": 0, "coolant_temp": 89, "voltage": 14.1}
+
+    mock_client = ConnectableClient()
+    controller = DashboardController(obd_client=mock_client)
+
+    # Połączenie zakończone błędem
+    res_fail = controller.connect_obd(port="INVALID_PORT", baudrate=38400)
+    assert res_fail["success"] is False
+    assert res_fail["connected"] is False
+
+    # Pomyślne połączenie
+    res_ok = controller.connect_obd(port="VALID_PORT", baudrate=115200)
+    assert res_ok["success"] is True
+    assert res_ok["connected"] is True
+    assert "Połączono pomyślnie" in res_ok["message"]
+
+    # Rozłączenie
+    res_disc = controller.disconnect_obd()
+    assert res_disc["success"] is True
+    assert res_disc["connected"] is False
+
+
+def test_car_doctor_ui_settings_panel_and_interactions():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=800, speed=0, coolant=85, voltage=14.0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Weryfikacja kontrolek ustawień
+    assert hasattr(ui, "port_input")
+    assert hasattr(ui, "btn_prof_mobile_bt")
+    assert hasattr(ui, "btn_prof_laptop_linux")
+    assert hasattr(ui, "connect_btn")
+    assert hasattr(ui, "disconnect_btn")
+
+    # Wybór profilu Laptop USB
+    ui.on_select_connection_profile("laptop_usb_linux")
+    assert ui.port_input.text == "/dev/ttyUSB0"
+    assert "115200 baud" in ui.btn_baud_select.text
+    assert "Laptop USB" in ui.connection_status_label.text
+
+    # Zmiana baudrate cyklicznie
+    ui.on_cycle_baudrate()
+    assert ui.controller.connection_config["baudrate"] in [38400, 115200, 9600, 0]
+
+    # Wybór profilu Mobile BT
+    ui.on_select_connection_profile("mobile_bt")
+    assert ui.port_input.text == "OBDII"
+
+    # Wywołanie rozłączenia z UI
+    ui.on_disconnect_obd()
+    assert "Rozłączono adapter" in ui.connection_status_label.text
+
+    # Wywołanie połączenia z UI
+    ui.on_connect_obd()
+    assert len(ui.connection_status_label.text) > 0

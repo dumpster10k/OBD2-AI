@@ -110,9 +110,22 @@ Zgodnie z wymogami bezpieczeństwa pojazdu (pkt 7 `AGENTS.md`) kasowanie kodów 
 
 ---
 
-## 7. Obsługa asystenta głosowego
+## 8. Ustawienia połączenia (Connection & Config)
 
-Przycisk `🎙️ Asystent głosowy (Zapytaj AI)` uruchamia integrację z `VoiceDiagnosticAssistant`:
-- Obsługa mowy kierowcy w trybie głośnomówiącym.
-- Ochrona przed kasowaniem błędów głosem (asystent odmawia i instruuje o wymogu potwierdzenia manualnego na postoju).
-- Synteza odpowiedzi przez lokalny model TTS (Piper).
+Panel `⚙️ USTAWIENIA POŁĄCZENIA OBD-II` umożliwia konfigurację i dynamiczne zarządzanie łącznością z adapterem diagnostycznym (Bluetooth na urządzeniach mobilnych, USB/Bluetooth na laptopach):
+
+### Profile połączenia (`CONNECTION_PROFILES`)
+| Profil | ID | Typ interfejsu | Domyślny port | Baudrate | Opis |
+|---|---|---|---|---|---|
+| **Mobilny BT** | `mobile_bt` | Bluetooth (RFCOMM) | `/dev/rfcomm0` | `38400` | Smartfony/tablety z adapterem OBD-II ELM327 Bluetooth |
+| **Laptop USB (Linux)** | `laptop_usb_linux` | USB Serial | `/dev/ttyUSB0` | `115200` | Laptopy z systemem Linux / adapter USB (FTDI/CH340) |
+| **Laptop USB (Windows)**| `laptop_usb_win` | USB COM | `COM3` | `115200` | Laptopy z systemem Windows / adapter USB |
+| **Laptop BT** | `laptop_bt` | Bluetooth RFCOMM | `/dev/rfcomm0` | `38400` | Laptopy łączące się przez wirtualny port Bluetooth |
+| **Auto-detekcja** | `auto` | Auto | `None` (auto) | `None` (auto) | Automatyczne skanowanie dostępnych portów przez bibliotekę `obd` |
+
+### Możliwości konfiguracji
+- **Ręczna edycja portu**: pole tekstowe z możliwością wpisania dowolnego portu szeregowego (np. `/dev/ttyACM0`, `COM4`).
+- **Wybór prędkości (Baudrate)**: szybki wybór standardowych prędkości transmisji: `Auto`, `38400` (domyślna dla BT ELM327) oraz `115200` (szybkie adaptery USB / STN1170).
+- **Dynamiczne rozłączanie i ponowne łączenie**: przyciski `🔌 Połącz` oraz `Rozłącz` wywołują metody `DashboardController.connect_obd()` i `disconnect_obd()`, bezpiecznie zamykając poprzednie połączenie i konfigurując instancję `OBDClient` w czasie działania aplikacji bez konieczności jej restartu.
+- **Pasek statusu połączenia**: bieżąca informacja o stanie połączenia, aktywnym profilu, wybranym porcie oraz prędkości baud.
+
