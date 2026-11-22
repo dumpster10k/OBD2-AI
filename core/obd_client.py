@@ -103,6 +103,35 @@ class OBDClient:
         res = self.connection.query(obd.commands.CLEAR_DTC)
         return bool(res and res.was_successful())
 
+    def get_vin(self) -> Optional[str]:
+        """Pobiera numer nadwozia VIN pojazdu (Mode 09 PID 02)."""
+        if not self.is_connected():
+            return None
+        try:
+            if hasattr(obd.commands, "VIN"):
+                res = self.connection.query(obd.commands.VIN)
+                if res and res.value:
+                    return str(res.value).strip()
+        except Exception:
+            pass
+        return None
+
+    def get_ecu_name(self) -> Optional[str]:
+        """Pobiera oznaczenie lub identyfikację sterownika ECU (Mode 09 PID 04 / 0A)."""
+        if not self.is_connected():
+            return None
+        try:
+            cmd = getattr(obd.commands, "CALIBRATION_ID", None) or getattr(obd.commands, "ECU_NAME", None)
+            if cmd is not None:
+                res = self.connection.query(cmd)
+                if res and res.value:
+                    if isinstance(res.value, (list, tuple)) and res.value:
+                        return str(res.value[0]).strip()
+                    return str(res.value).strip()
+        except Exception:
+            pass
+        return None
+
     def get_telemetry(self) -> dict[str, Any]:
         """Zwraca znormalizowany słownik parametrów telemetrycznych."""
         if not self.is_connected():

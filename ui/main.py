@@ -109,11 +109,13 @@ from services.llm_engine import (
     RECOMMENDED_LLM_MODELS,
     LLMModelSpec,
 )
+from services.sensor_manager import SensorManager
 from services.speech_service import (
     RECOMMENDED_SPEECH_MODELS,
     SpeechModelSpec,
 )
 from services.telemetry_logger import TelemetryLogger
+from services.vehicle_profiler import VehicleProfile, VehicleProfiler
 
 logger = logging.getLogger(__name__)
 
@@ -511,6 +513,8 @@ class DashboardController:
             obd_client=self.obd,
             telemetry_logger=self.telemetry_logger,
         )
+        self.sensor_manager: SensorManager = SensorManager.with_full_database()
+        self.vehicle_profile: VehicleProfile = VehicleProfiler.detect_profile()
 
     def list_actuator_tests(self, category: Optional[str] = None) -> list[ActuatorTestDefinition]:
         """Zwraca listę dostępnych procedur testowania elementów wykonawczych."""
@@ -572,7 +576,8 @@ class DashboardController:
         success = self.obd.connect(port=portstr, baudrate=baud)
         if success:
             self.refresh_telemetry()
-            msg = f"Połączono pomyślnie ({portstr or 'Auto'}, {baud or 'Auto'} baud)"
+            self.detect_and_apply_vehicle_profile()
+            msg = f"Połączono pomyślnie ({portstr or 'Auto'}). Wykryto: {self.vehicle_profile.summary_description}"
         else:
             msg = f"Brak połączenia z {portstr or 'Auto'} (sprawdź zasilanie, Bluetooth lub port USB)"
 
@@ -625,7 +630,33 @@ class DashboardController:
         self.simulated_telemetry = dict(scen["telemetry"])
         self.telemetry = dict(self.simulated_telemetry)
         self.record_telemetry_point(self.telemetry)
+
+        # Dopasowanie profilu pojazdu dla scenariusza symulacji
+        if scenario_key == "lean_mix":
+            self.detect_and_apply_vehicle_profile(vin="WVWZZZ1JZ3W123456", ecu_id="06A906033 BSE 1.6")
+        elif scenario_key == "misfire":
+            self.detect_and_apply_vehicle_profile(vin="WAUZZZ8E34A123456", ecu_id="06B906018 BFB 1.8T")
+        elif scenario_key == "overheat":
+            self.detect_and_apply_vehicle_profile(vin="WAUZZZ8E13A123456", ecu_id="038906019FP AVF 1.9 TDI")
+
         return scen
+
+    def detect_and_apply_vehicle_profile(
+        self, vin: Optional[str] = None, ecu_id: Optional[str] = None
+    ) -> VehicleProfile:
+        """Wykrywa profil pojazdu na podstawie VIN / ECU oraz konfiguruje czujniki."""
+        get_vin_fn = getattr(self.obd, "get_vin", None)
+        get_ecu_fn = getattr(self.obd, "get_ecu_name", None)
+        v_vin = vin if vin is not None else (get_vin_fn() if callable(get_vin_fn) else None)
+        v_ecu = ecu_id if ecu_id is not None else (get_ecu_fn() if callable(get_ecu_fn) else None)
+
+        self.vehicle_profile = VehicleProfiler.detect_profile(vin=v_vin, ecu_id=v_ecu)
+        logger.info(
+            "Aktywowano profil pojazdu: %s (%d aktywnych czujników)",
+            self.vehicle_profile.summary_description,
+            len(self.vehicle_profile.active_sensor_names),
+        )
+        return self.vehicle_profile
 
     def refresh_telemetry(self) -> dict[str, Any]:
         """Pobiera i aktualizuje bieżące parametry telemetryczne pojazdu."""
