@@ -5,7 +5,15 @@ import pytest
 from core.obd_client import OBDClient
 from services.ai_engine import AIEngine
 from services.diagnostic_ai import DiagnosisReport
-from ui.main import AIDoctorApp, CarDoctorUI, DashboardController
+from services.llm_engine import LLMModelSpec
+from services.speech_service import SpeechModelSpec
+from ui.main import (
+    AIDoctorApp,
+    COLOR_DANGER,
+    COLOR_SUCCESS,
+    CarDoctorUI,
+    DashboardController,
+)
 
 
 class FakeOBDConnection:
@@ -587,5 +595,186 @@ def test_car_doctor_ui_telemetry_logging_controls():
     assert controller.is_logging is False
     assert "WYŁ" in ui.btn_toggle_logging.text
     assert "Zatrzymano rejestrację" in ui.status_label.text
+
+
+
+
+# =====================================================================
+# NOWE TESTY SELEKTORA MODELI AI I MOWY (z feature/ai-model-selection)
+# =====================================================================
+
+
+def test_dashboard_controller_model_configuration():
+    """Testuje konfigurację modeli AI w DashboardController."""
+    controller = DashboardController()
+
+    # Sprawdzenie dostępnych modeli
+    assert controller.available_models is not None
+    assert len(controller.available_models) >= 3
+
+    # Sprawdzenie domyślnego modelu
+    assert controller.current_model_spec is not None
+    assert isinstance(controller.current_model_spec, LLMModelSpec)
+
+    # Sprawdzenie statusu backendu
+    assert controller.model_backend_status == "Dostępny (Mock)"
+
+
+def test_dashboard_controller_on_model_select():
+    """Testuje metodę on_model_select w DashboardController."""
+    controller = DashboardController()
+
+    # Wybór modelu
+    selected_model = controller.available_models[1]
+    controller.on_model_select(selected_model)
+
+    # Weryfikacja
+    assert controller.current_model_spec == selected_model
+    assert controller.model_backend_status == "Dostępny (Mock)"
+
+
+def test_dashboard_controller_speech_configuration():
+    """Testuje konfigurację modeli mowy w DashboardController."""
+    controller = DashboardController()
+
+    # Sprawdzenie dostępnych modeli STT i TTS
+    assert controller.available_stt_models is not None
+    assert len(controller.available_stt_models) >= 2  # Whisper Tiny, Vosk
+
+    assert controller.available_tts_models is not None
+    assert len(controller.available_tts_models) >= 2  # Piper Darkman, Gosia
+
+    # Sprawdzenie domyślnych modeli
+    assert controller.current_stt_model_spec is not None
+    assert controller.current_tts_model_spec is not None
+    assert isinstance(controller.current_stt_model_spec, SpeechModelSpec)
+    assert isinstance(controller.current_tts_model_spec, SpeechModelSpec)
+
+    # Sprawdzenie stanu mikrofonu
+    assert controller.mic_enabled is True
+
+
+def test_dashboard_controller_speech_model_select():
+    """Testuje wybór modeli mowy w DashboardController."""
+    controller = DashboardController()
+
+    # Wybór modelu STT
+    stt_model = controller.available_stt_models[0]
+    controller.on_stt_model_select(stt_model)
+    assert controller.current_stt_model_spec == stt_model
+
+    # Wybór modelu TTS
+    tts_model = controller.available_tts_models[0]
+    controller.on_tts_model_select(tts_model)
+    assert controller.current_tts_model_spec == tts_model
+
+    # Przełączanie mikrofonu
+    controller.toggle_mic_enabled(False)
+    assert controller.mic_enabled is False
+
+    controller.toggle_mic_enabled(True)
+    assert controller.mic_enabled is True
+
+
+def test_car_doctor_ui_has_speech_selector():
+    """Testuje obecność panelu selektora modeli mowy w UI."""
+    fake_conn = FakeOBDConnection(dtc=[], speed=0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Sprawdzenie widżetów selektora mowy
+    assert hasattr(ui, "speech_status_label")
+    assert hasattr(ui, "speech_grid")
+    assert hasattr(ui, "mic_btn")
+
+    # Weryfikacja początkowego statusu
+    assert "STT:" in ui.speech_status_label.text
+    assert "TTS:" in ui.speech_status_label.text
+    assert "Mikrofon:" in ui.speech_status_label.text
+    assert "ON" in ui.speech_status_label.text
+
+
+def test_car_doctor_ui_speech_selection():
+    """Testuje wybór modeli mowy w UI."""
+    fake_conn = FakeOBDConnection(dtc=[], speed=0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Pobranie pierwszego przycisku z karty STT
+    if ui.speech_grid.children:
+        stt_col = ui.speech_grid.children[0]
+        if hasattr(stt_col, 'children') and stt_col.children:
+            first_card = stt_col.children[0]
+            if hasattr(first_card, 'children') and first_card.children:
+                first_btn = first_card.children[-1]  # Ostatni widżet to przycisk
+                if hasattr(first_btn, 'user_data'):
+                    model, model_type = first_btn.user_data
+                    if model and model_type == "STT":
+                        # Wybór modelu STT
+                        ui._on_speech_card_press(first_btn)
+
+                        # Weryfikacja statusu
+                        assert controller.current_stt_model_spec == model
+                        assert "STT:" in ui.speech_status_label.text
+
+
+def test_car_doctor_ui_mic_toggle():
+    """Testuje przełączanie mikrofonu w UI."""
+    fake_conn = FakeOBDConnection(dtc=[], speed=0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Weryfikacja początkowego stanu
+    assert controller.mic_enabled is True
+    assert "ON" in ui.mic_btn.text and tuple(ui.mic_btn.color) == COLOR_SUCCESS
+
+    # Przełączanie mikrofonu
+    ui.on_toggle_mic(ui.mic_btn)
+    assert controller.mic_enabled is False
+    assert "OFF" in ui.mic_btn.text
+    assert tuple(ui.mic_btn.color) == COLOR_DANGER
+
+
+def test_car_doctor_ui_has_model_selector():
+    """Testuje obecność panelu selektora modeli w UI."""
+    fake_conn = FakeOBDConnection(dtc=[], speed=0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Sprawdzenie widżetów selektora
+    assert hasattr(ui, "model_status_label")
+    assert hasattr(ui, "models_grid")
+
+    # Weryfikacja początkowego statusu
+    assert "Nie wybrano" in ui.model_status_label.text
+
+
+def test_car_doctor_ui_model_selection():
+    """Testuje wybór modelu w UI."""
+    fake_conn = FakeOBDConnection(dtc=[], speed=0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Pobranie pierwszego przycisku z karty modelu
+    if ui.models_grid.children:
+        first_card = ui.models_grid.children[0]
+        if hasattr(first_card, 'children') and first_card.children:
+            first_btn = first_card.children[-1]  # Ostatni widżet to przycisk
+            if hasattr(first_btn, 'user_data'):
+                model = first_btn.user_data
+                if model:
+                    # Wybór modelu
+                    ui._on_model_card_press(first_btn)
+
+                    # Weryfikacja statusu
+                    assert controller.current_model_spec == model
+                    assert "Model AI:" in ui.model_status_label.text
+                    assert tuple(ui.model_status_label.color) == COLOR_SUCCESS
+
 
 
