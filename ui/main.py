@@ -877,13 +877,11 @@ class DashboardController:
             initial_dtcs=initial_dtcs,
         )
         self.is_logging = True
-        if self.preferences_mgr.profile.auto_harvest_on_connect:
-            self.telemetry_harvester.start(session_id=self.current_session_id)
         return self.current_session_id
 
     def stop_telemetry_logging(self) -> None:
         """Zatrzymuje rejestrację telemetrii."""
-        self.telemetry_harvester.stop()
+        self.stop_telemetry_harvesting()
         if self.current_session_id:
             final_dtcs = [str(c[0] if isinstance(c, (list, tuple)) else c) for c in self.current_dtcs]
             self.telemetry_logger.end_session(self.current_session_id, final_dtcs=final_dtcs)
@@ -2103,6 +2101,7 @@ class CarDoctorUI(BoxLayout):
         """Włącza lub wyłącza nagrywanie próbek telemetrii do bazy SQLite."""
         if not self.controller.is_logging:
             sess_id = self.controller.start_telemetry_logging()
+            self.controller.start_telemetry_harvesting(session_id=sess_id)
             self.btn_toggle_logging.text = "🔴 Rejestrowanie WŁ"
             self.btn_toggle_logging.background_color = COLOR_DANGER
             self.status_label.text = f"Rozpoczęto rejestrację trasy ({sess_id})"
