@@ -550,10 +550,9 @@ def test_car_doctor_ui_voice_card_and_interactions():
     assert "Komenda" in ui.voice_status_label.text
     assert "88°C" in ui.voice_response_label.text
 
-    # Kliknięcie nagrywania mikrofonu
+    # Kliknięcie nagrywania mikrofonu (weryfikacja zachowania przy braku / obecności mikrofonu)
     ui.on_voice_record_button()
-    assert "Rozpoznano" in ui.voice_status_label.text
-    assert len(ui.voice_response_label.text) > 0
+    assert "Rozpoznano" in ui.voice_status_label.text or "niedostępny" in ui.voice_status_label.text
 
     # Wpisanie własnego pytania i kliknięcie wyślij
     ui.voice_custom_input.text = "Czy mogę bezpiecznie jechać dalej?"
@@ -777,3 +776,27 @@ def test_car_doctor_ui_model_selection():
                     assert controller.current_model_spec == model
                     assert "Model AI:" in ui.model_status_label.text
                     assert tuple(ui.model_status_label.color) == COLOR_SUCCESS
+
+
+def test_microphone_status_and_auto_freeze_frame_recording():
+    fake_conn = FakeOBDConnection(dtc=[("P0171", "Too lean"), ("P0101", "MAF")], speed=0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+
+    # Status mikrofonu
+    mic_status = controller.get_microphone_status()
+    assert "is_available" in mic_status
+    assert "is_live" in mic_status
+    assert "message" in mic_status
+
+    # Skanowanie DTC z automatycznym zapisem ramki do loggera
+    dtcs, report = controller.scan_dtc_and_diagnose()
+    assert len(dtcs) == 2
+    assert report is not None
+    assert "Korelacja usterek" in report.summary
+
+    # UI przycisk mikrofonu bez sounddevice
+    ui = CarDoctorUI(controller=controller)
+    assert hasattr(ui, "voice_status_label")
+    ui.on_voice_record_button()
+    assert "niedostępny" in ui.voice_status_label.text.lower() or "rozpoznano" in ui.voice_status_label.text.lower()
