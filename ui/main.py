@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
@@ -57,6 +59,7 @@ try:
     from kivy.uix.button import Button
     from kivy.uix.gridlayout import GridLayout
     from kivy.uix.label import Label
+    from kivy.uix.progressbar import ProgressBar
     from kivy.uix.scrollview import ScrollView
     from kivy.uix.textinput import TextInput
     from kivy.uix.widget import Widget
@@ -87,6 +90,10 @@ except ImportError:
     class Label(WidgetStub):
         pass
 
+    class ProgressBar(WidgetStub):
+        value = 0
+        max = 100
+
     class ScrollView(WidgetStub):
         pass
 
@@ -110,6 +117,10 @@ from services.llm_engine import (
     RECOMMENDED_LLM_MODELS,
     LLMModelSpec,
     LMStudioBackend,
+)
+from services.model_downloader import (
+    HUGGINGFACE_MODEL_REGISTRY,
+    ModelDownloader,
 )
 from services.sensor_manager import SensorManager
 from services.speech_service import (
@@ -455,10 +466,12 @@ class DashboardController:
         obd_client: Optional[OBDClient] = None,
         ai_engine: Optional[AIEngine] = None,
         telemetry_logger: Optional[TelemetryLogger] = None,
+        model_downloader: Optional[ModelDownloader] = None,
     ):
         self.obd = obd_client or OBDClient()
         self.ai = ai_engine or AIEngine()
         self.telemetry_logger = telemetry_logger or TelemetryLogger()
+        self.model_downloader = model_downloader or ModelDownloader()
         self.is_logging: bool = False
         self.current_session_id: Optional[str] = None
         self.telemetry: dict[str, Any] = {
@@ -960,8 +973,38 @@ class DashboardController:
     def on_model_select(self, model_spec: LLMModelSpec) -> None:
         """Obsługa wybrania modelu LLM."""
         self.current_model_spec = model_spec
-        self.model_backend_status = "Dostępny (Mock)"
+        if self.model_downloader.is_model_installed(model_spec.model_id):
+            self.model_backend_status = "Zainstalowany (Lokalny plik)"
+        elif model_spec.model_id == "qwen3.5-9b-mtp" and "LM Studio" in self.model_backend_status:
+            pass  # Pozostaw aktywny status LM Studio
+        else:
+            self.model_backend_status = "Dostępny (Mock)"
         logger.info(f"Wybrano model: {model_spec.name}")
+
+    def is_model_installed(self, model_id: str) -> bool:
+        """Sprawdza, czy plik modelu istnieje lokalnie."""
+        return self.model_downloader.is_model_installed(model_id)
+
+    def download_model_async(
+        self,
+        model_id: str,
+        on_progress: Optional[Callable[[int, int, float, float], None]] = None,
+        on_complete: Optional[Callable[[bool, Optional[str], Optional[Path]], None]] = None,
+    ) -> threading.Thread:
+        """Rozpoczyna pobieranie modelu w tle."""
+        return self.model_downloader.download_in_background(
+            model_id=model_id,
+            progress_callback=on_progress,
+            completion_callback=on_complete,
+        )
+
+    def delete_installed_model(self, model_id: str) -> bool:
+        """Usuwa zainstalowany lokalnie plik modelu."""
+        return self.model_downloader.delete_model(model_id)
+
+    def get_model_download_progress(self, model_id: str) -> tuple[int, int, float, float]:
+        """Zwraca postęp pobierania modelu (pobrane, łączne, procent, prędkość_kbps)."""
+        return self.model_downloader.get_progress(model_id)
 
     # ---------------------------------------------------------------------
     # Speech models configuration
@@ -1734,7 +1777,7 @@ class CarDoctorUI(BoxLayout):
 
     def _create_speech_card(self, model: Any, model_type: str) -> BoxLayout:
         """Tworzy kartę modelu mowy."""
-        card = BoxLayout(orientation="vertical", size_hint_y=None, height=70, spacing=3)
+        card = BoxLayout(orientation="vertical", size_hint_y=None, height=105, spacing=3)
 
         name_label = Label(
             text=model.name,
@@ -1743,8 +1786,10 @@ class CarDoctorUI(BoxLayout):
             font_size=11,
             bold=True,
         )
+        is_inst = self.controller.is_model_installed(model.model_id)
+        status_tag = "✅ Zainstalowany" if is_inst else "⬇️ Do pobrania"
         spec_label = Label(
-            text=f"📦 {model.size_mb} MB | 💾 {model.ram_required_mb} MB",
+            text=f"📦 {model.size_mb} MB | 💾 {model.ram_required_mb} MB | {status_tag}",
             size_hint_y=None,
             height=16,
             font_size=10,
@@ -1760,6 +1805,19 @@ class CarDoctorUI(BoxLayout):
         card.add_widget(spec_label)
         card.add_widget(desc_label)
 
+        if model.model_id in HUGGINGFACE_MODEL_REGISTRY:
+            dl_btn = Button(
+                text="🗑️ Usuń" if is_inst else f"⬇️ Pobierz ({model.size_mb} MB)",
+                size_hint_y=None,
+                height=24,
+                font_size=9,
+                background_normal="",
+                background_color=COLOR_DANGER if is_inst else (0.15, 0.35, 0.25, 1.0),
+            )
+            dl_btn.user_data = model
+            dl_btn.bind(on_press=self._on_speech_download_press)
+            card.add_widget(dl_btn)
+
         btn = Button(
             text=f"Wybierz {model_type}",
             size_hint_y=None,
@@ -1771,6 +1829,41 @@ class CarDoctorUI(BoxLayout):
         card.add_widget(btn)
 
         return card
+
+    def _on_speech_download_press(self, btn: Button) -> None:
+        """Obsługa pobierania lub usuwania modelu mowy z Hugging Face."""
+        model = getattr(btn, "user_data", None)
+        if not model:
+            return
+        model_id = model.model_id if hasattr(model, "model_id") else str(model)
+        if self.controller.is_model_installed(model_id):
+            self.controller.delete_installed_model(model_id)
+            btn.text = f"⬇️ Pobierz ({model.size_mb} MB)"
+            btn.background_color = (0.15, 0.35, 0.25, 1.0)
+            self.speech_status_label.text = f"🗑️ Usunięto model mowy: {model.name}"
+        else:
+            btn.text = "⏳ Pobieranie..."
+            btn.disabled = True
+
+            def _progress(bytes_dl: int, total: int, pct: float, speed: float) -> None:
+                btn.text = f"⏳ {pct:.1f}% ({speed:.0f} KB/s)"
+
+            def _complete(success: bool, err: Optional[str], path: Optional[Path]) -> None:
+                btn.disabled = False
+                if success:
+                    btn.text = "🗑️ Usuń"
+                    btn.background_color = COLOR_DANGER
+                    self.speech_status_label.text = f"✅ Zainstalowano model: {model.name}"
+                else:
+                    btn.text = "⚠️ Błąd pobierania"
+                    btn.background_color = COLOR_DANGER
+                    self.speech_status_label.text = f"⚠️ Błąd: {err}"
+
+            self.controller.download_model_async(
+                model_id=model_id,
+                on_progress=_progress,
+                on_complete=_complete,
+            )
 
     def _on_speech_card_press(self, _btn: Button) -> None:
         """Obsługa kliknięcia w kartę modelu mowy."""
@@ -1786,7 +1879,7 @@ class CarDoctorUI(BoxLayout):
         """Tworzy karty dla każdego dostępnego modelu LLM."""
         for model in self.controller.available_models:
             # Karta modelu
-            model_card = BoxLayout(orientation="vertical", size_hint_y=None, height=80, spacing=3)
+            model_card = BoxLayout(orientation="vertical", size_hint_y=None, height=115, spacing=3)
 
             # Nazwa modelu
             model_name_label = Label(
@@ -1798,8 +1891,14 @@ class CarDoctorUI(BoxLayout):
             )
 
             # Specyfikacja (rozmiar, RAM)
+            is_inst = self.controller.is_model_installed(model.model_id)
+            status_tag = (
+                "✅ Zainstalowany"
+                if is_inst
+                else ("🖥️ LM Studio" if model.model_id == "qwen3.5-9b-mtp" else "⬇️ Do pobrania")
+            )
             spec_label = Label(
-                text=f"📦 {model.size_mb} MB | 💾 {model.ram_required_mb} MB RAM",
+                text=f"📦 {model.size_mb} MB | 💾 {model.ram_required_mb} MB RAM | {status_tag}",
                 size_hint_y=None,
                 height=18,
                 font_size=11,
@@ -1818,6 +1917,19 @@ class CarDoctorUI(BoxLayout):
             model_card.add_widget(spec_label)
             model_card.add_widget(rec_label)
 
+            if model.model_id in HUGGINGFACE_MODEL_REGISTRY:
+                dl_btn = Button(
+                    text="🗑️ Usuń" if is_inst else f"⬇️ Pobierz ({model.size_mb} MB)",
+                    size_hint_y=None,
+                    height=26,
+                    font_size=10,
+                    background_normal="",
+                    background_color=COLOR_DANGER if is_inst else (0.15, 0.35, 0.25, 1.0),
+                )
+                dl_btn.user_data = model
+                dl_btn.bind(on_press=self._on_model_download_press)
+                model_card.add_widget(dl_btn)
+
             # Przycisk wyboru
             select_btn = Button(
                 text="Wybierz",
@@ -1830,6 +1942,44 @@ class CarDoctorUI(BoxLayout):
             model_card.add_widget(select_btn)
 
             self.models_grid.add_widget(model_card)
+
+    def _on_model_download_press(self, btn: Button) -> None:
+        """Obsługa pobierania lub usuwania modelu LLM z Hugging Face."""
+        model = getattr(btn, "user_data", None)
+        if not model:
+            return
+        model_id = model.model_id if hasattr(model, "model_id") else str(model)
+        if self.controller.is_model_installed(model_id):
+            self.controller.delete_installed_model(model_id)
+            btn.text = f"⬇️ Pobierz ({model.size_mb} MB)"
+            btn.background_color = (0.15, 0.35, 0.25, 1.0)
+            self.model_status_label.text = f"🗑️ Usunięto model: {model.name}"
+            self.model_status_label.color = COLOR_TEXT_MUTED
+        else:
+            btn.text = "⏳ Pobieranie..."
+            btn.disabled = True
+
+            def _progress(bytes_dl: int, total: int, pct: float, speed: float) -> None:
+                btn.text = f"⏳ {pct:.1f}% ({speed:.0f} KB/s)"
+
+            def _complete(success: bool, err: Optional[str], path: Optional[Path]) -> None:
+                btn.disabled = False
+                if success:
+                    btn.text = "🗑️ Usuń"
+                    btn.background_color = COLOR_DANGER
+                    self.model_status_label.text = f"✅ Zainstalowano model: {model.name}"
+                    self.model_status_label.color = COLOR_SUCCESS
+                else:
+                    btn.text = "⚠️ Błąd pobierania"
+                    btn.background_color = COLOR_DANGER
+                    self.model_status_label.text = f"⚠️ Błąd: {err}"
+                    self.model_status_label.color = COLOR_DANGER
+
+            self.controller.download_model_async(
+                model_id=model_id,
+                on_progress=_progress,
+                on_complete=_complete,
+            )
 
     def _get_recommendation_text(self, model: LLMModelSpec) -> str:
         """Zwraca tekst rekomendacji dla modelu."""
