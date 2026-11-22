@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Optional
 import obd
 
 
@@ -16,13 +17,74 @@ def _extract_metric(res: Any, val_type: type = int) -> Any:
     return val_type(val)
 
 
+@dataclass
+class ConnectionConfig:
+    """Parametry konfiguracyjne połączenia z adapterem OBD-II / ELM327."""
+
+    connection_type: str = "auto"  # "bluetooth_mobile", "usb_laptop", "bluetooth_laptop", "auto"
+    port: Optional[str] = None  # np. "/dev/ttyUSB0", "COM3", "OBDII", "00:1D:A5:68:98:8B"
+    baudrate: Optional[int] = None  # np. 38400, 115200, 9600
+    protocol: Optional[str] = None  # None (auto) lub identyfikator protokołu (np. "6")
+    fast: bool = True
+    timeout: float = 5.0
+
+
 class OBDClient:
-    def __init__(self, port=None, connection=None):
+    def __init__(
+        self,
+        port: Optional[str] = None,
+        connection: Any = None,
+        baudrate: Optional[int] = None,
+    ):
         self.connection = connection
-        if connection is None:
+        self.port = port
+        self.baudrate = baudrate
+        if connection is None and port is not None:
+            self.connect(port=port, baudrate=baudrate)
+        elif connection is None:
             try:
-                self.connection = obd.OBD(port)
+                self.connection = obd.OBD()
             except Exception:
+                self.connection = None
+
+    def connect(
+        self,
+        port: Optional[str] = None,
+        baudrate: Optional[int] = None,
+        protocol: Optional[str] = None,
+        fast: bool = True,
+        timeout: float = 5.0,
+    ) -> bool:
+        """Nawiązuje połączenie z adapterem ELM327 (USB / Bluetooth / Serial)."""
+        self.disconnect()
+        try:
+            kwargs: dict[str, Any] = {"fast": fast, "timeout": timeout}
+            target_port = port if port is not None else self.port
+            if target_port:
+                kwargs["portstr"] = target_port
+                self.port = target_port
+            target_baud = baudrate if baudrate is not None else self.baudrate
+            if target_baud:
+                kwargs["baudrate"] = int(target_baud)
+                self.baudrate = int(target_baud)
+            if protocol:
+                kwargs["protocol"] = protocol
+
+            self.connection = obd.OBD(**kwargs)
+            return self.is_connected()
+        except Exception:
+            self.connection = None
+            return False
+
+    def disconnect(self) -> None:
+        """Bezpiecznie zamyka aktywne połączenie z adapterem OBD."""
+        if self.connection is not None:
+            try:
+                if hasattr(self.connection, "close"):
+                    self.connection.close()
+            except Exception:
+                pass
+            finally:
                 self.connection = None
 
     def is_connected(self) -> bool:

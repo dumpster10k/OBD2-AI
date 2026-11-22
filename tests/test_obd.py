@@ -105,3 +105,43 @@ def test_get_telemetry_with_failing_queries():
     assert telemetry["speed"] == 0
     assert telemetry["coolant_temp"] == 0
     assert telemetry["voltage"] == 12.6
+
+
+def test_connection_config_dataclass():
+    from core.obd_client import ConnectionConfig
+    cfg = ConnectionConfig()
+    assert cfg.connection_type == "auto"
+    assert cfg.port is None
+    assert cfg.baudrate is None
+
+    custom = ConnectionConfig(
+        connection_type="bluetooth_mobile",
+        port="OBDII",
+        baudrate=38400,
+        protocol="6",
+    )
+    assert custom.connection_type == "bluetooth_mobile"
+    assert custom.port == "OBDII"
+    assert custom.baudrate == 38400
+    assert custom.protocol == "6"
+
+
+def test_obd_client_disconnect_and_reconnect():
+    class ClosableConnection(Connection):
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    conn = ClosableConnection()
+    client = OBDClient(connection=conn)
+    assert client.is_connected() is True
+
+    client.disconnect()
+    assert conn.closed is True
+    assert client.is_connected() is False
+
+    # Próba połączenia na nieistniejący port zwraca False i nie rzuca niespójnym wyjątkiem
+    res = client.connect(port="/dev/nonexistent_tty", timeout=0.1)
+    assert res is False
+    assert client.is_connected() is False

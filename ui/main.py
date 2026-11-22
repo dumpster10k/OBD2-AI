@@ -19,6 +19,7 @@ try:
     from kivy.uix.gridlayout import GridLayout
     from kivy.uix.label import Label
     from kivy.uix.scrollview import ScrollView
+    from kivy.uix.textinput import TextInput
     from kivy.uix.widget import Widget
 
     KIVY_AVAILABLE = True
@@ -31,6 +32,7 @@ except ImportError:
             self.text: str = kwargs.get("text", "")
             self.color: list[float] = kwargs.get("color", [1.0, 1.0, 1.0, 1.0])
             self.size_hint_y = kwargs.get("size_hint_y", 1)
+            self.size_hint_x = kwargs.get("size_hint_x", 1)
             self.height = kwargs.get("height", 100)
             self.width = kwargs.get("width", 100)
             self.pos = (0, 0)
@@ -74,8 +76,11 @@ except ImportError:
     class ScrollView(WidgetStub):
         pass
 
+    class TextInput(WidgetStub):
+        pass
 
-from core.obd_client import OBDClient
+
+from core.obd_client import ConnectionConfig, OBDClient
 from services.ai_engine import AIEngine
 from services.diagnostic_ai import DiagnosisReport
 from services.llm_engine import DISCLAIMER_TEXT
@@ -92,6 +97,45 @@ COLOR_WARNING = (0.96, 0.62, 0.14, 1.0)     # Ostrzeżenie (Amber #F59E0B)
 COLOR_DANGER = (0.88, 0.11, 0.28, 1.0)      # Krytyczny / Kasowanie (Rose #E11D48)
 COLOR_VOICE = (0.49, 0.23, 0.93, 1.0)       # Asystent mowy (Violet #7C3AED)
 COLOR_TEXT_MUTED = (0.58, 0.64, 0.72, 1.0)  # Tekst pomocniczy #94A3B8
+
+# Profile połączeń z adapterem OBD (Mobile Bluetooth vs Laptop USB / Bluetooth)
+CONNECTION_PROFILES: dict[str, dict[str, Any]] = {
+    "mobile_bt": {
+        "name": "📱 Mobile Bluetooth (Android / iOS)",
+        "type": "bluetooth",
+        "port": "OBDII",
+        "baudrate": 38400,
+        "description": "Bezprzewodowy profil Bluetooth SPP dla smartfonów i tabletów.",
+    },
+    "laptop_usb_linux": {
+        "name": "💻 Laptop USB (Linux / macOS)",
+        "type": "usb",
+        "port": "/dev/ttyUSB0",
+        "baudrate": 115200,
+        "description": "Przewodowy port szeregowy USB FTDI/CH340 dla systemów Linux.",
+    },
+    "laptop_usb_win": {
+        "name": "💻 Laptop USB (Windows COM)",
+        "type": "usb",
+        "port": "COM3",
+        "baudrate": 38400,
+        "description": "Wirtualny port COM adaptera USB ELM327 pod Windows.",
+    },
+    "laptop_bt": {
+        "name": "💻 Laptop Bluetooth (RFCOMM)",
+        "type": "bluetooth",
+        "port": "/dev/rfcomm0",
+        "baudrate": 38400,
+        "description": "Powiązany port Bluetooth RFCOMM na komputerze przenośnym.",
+    },
+    "auto": {
+        "name": "🔍 Automatyczne wykrywanie",
+        "type": "auto",
+        "port": "",
+        "baudrate": 0,
+        "description": "Automatyczne skanowanie wszystkich portów USB i Bluetooth.",
+    },
+}
 
 # Predefiniowane realistyczne scenariusze symulacji awarii
 SIMULATION_SCENARIOS: dict[str, dict[str, Any]] = {
@@ -210,7 +254,6 @@ class TelemetryChart(StyledCard):
         )
         header_box.add_widget(self.chart_title)
 
-        # Przyciski wyboru metryki
         self.btn_rpm = Button(
             text="RPM",
             font_size="11sp",
@@ -257,7 +300,7 @@ class TelemetryChart(StyledCard):
 
         self.add_widget(header_box)
 
-        # 2. Pasek informacyjny: Min / Max / Aktualna wartość
+        # 2. Pasek informacyjny
         self.stats_label = Label(
             text="Bieżące: 0 RPM | Min: 0 RPM | Max: 0 RPM (próbek: 1)",
             font_size="11sp",
@@ -269,7 +312,7 @@ class TelemetryChart(StyledCard):
         )
         self.add_widget(self.stats_label)
 
-        # 3. Obszar rysowania wykresu (Plot Area)
+        # 3. Obszar rysowania wykresu
         if KIVY_AVAILABLE:
             self.plot_area = Widget(size_hint=(1, 1))
             with self.plot_area.canvas:
@@ -367,7 +410,7 @@ class TelemetryChart(StyledCard):
 
 
 class DashboardController:
-    """Kontroler pulpitu diagnostycznego oddzielający logikę biznesową, symulację i telemetrię od Kivy."""
+    """Kontroler pulpitu diagnostycznego oddzielający logikę biznesową, symulację, konfigurację i telemetrię od Kivy."""
 
     def __init__(
         self,
@@ -389,6 +432,14 @@ class DashboardController:
         self.dtc_clear_pending: bool = False
         self.session_log: list[dict[str, Any]] = []
 
+        # Moduł konfiguracji połączeń (Mobile BT / Laptop USB & BT)
+        self.connection_config: dict[str, Any] = {
+            "profile_key": "mobile_bt",
+            "type": "bluetooth",
+            "port": "OBDII",
+            "baudrate": 38400,
+        }
+
         # Moduł symulatora i historii trendów
         self.simulation_mode: bool = False
         self.active_scenario: str = "clean"
@@ -404,6 +455,60 @@ class DashboardController:
             "speed": [0.0],
             "coolant_temp": [0.0],
             "voltage": [0.0],
+        }
+
+    def apply_connection_profile(self, profile_key: str) -> dict[str, Any]:
+        """Aplikuje predefiniowany profil połączenia (Mobile Bluetooth / Laptop USB / Laptop Bluetooth / Auto)."""
+        prof = CONNECTION_PROFILES.get(profile_key, CONNECTION_PROFILES["auto"])
+        self.connection_config = {
+            "profile_key": profile_key,
+            "type": prof["type"],
+            "port": prof["port"],
+            "baudrate": prof["baudrate"],
+        }
+        return prof
+
+    def update_connection_settings(
+        self, port: str, baudrate: int = 38400, connection_type: str = "auto"
+    ) -> dict[str, Any]:
+        """Aktualizuje indywidualne parametry portu i prędkości transmisji."""
+        self.connection_config["port"] = port.strip()
+        self.connection_config["baudrate"] = int(baudrate)
+        self.connection_config["type"] = connection_type
+        return dict(self.connection_config)
+
+    def connect_obd(
+        self, port: Optional[str] = None, baudrate: Optional[int] = None
+    ) -> dict[str, Any]:
+        """Nawiązuje połączenie z adapterem ELM327 według bieżących lub zadanych ustawień."""
+        target_port = port if port is not None else self.connection_config.get("port")
+        target_baud = baudrate if baudrate is not None else self.connection_config.get("baudrate")
+
+        portstr = target_port.strip() if (target_port and target_port.strip()) else None
+        baud = target_baud if (target_baud and target_baud > 0) else None
+
+        success = self.obd.connect(port=portstr, baudrate=baud)
+        if success:
+            self.refresh_telemetry()
+            msg = f"Połączono pomyślnie ({portstr or 'Auto'}, {baud or 'Auto'} baud)"
+        else:
+            msg = f"Brak połączenia z {portstr or 'Auto'} (sprawdź zasilanie, Bluetooth lub port USB)"
+
+        return {
+            "success": success,
+            "message": msg,
+            "connected": self.obd.is_connected(),
+            "port": portstr,
+            "baudrate": baud,
+        }
+
+    def disconnect_obd(self) -> dict[str, Any]:
+        """Rozłącza adapter OBD."""
+        self.obd.disconnect()
+        return {
+            "success": True,
+            "message": "Rozłączono adapter OBD",
+            "connected": False,
         }
 
     def record_telemetry_point(self, telemetry_data: dict[str, Any]) -> None:
@@ -575,7 +680,7 @@ class DashboardController:
 
 
 class CarDoctorUI(BoxLayout):
-    """Nowoczesny pulpit mobilny Kivy z telemetrią na żywo, wykresem trendu, symulatorem i asystentem AI."""
+    """Nowoczesny pulpit mobilny Kivy z telemetrią na żywo, wykresem trendu, symulatorem i ustawieniami połączeń."""
 
     def __init__(self, controller: Optional[DashboardController] = None, **kwargs):
         super().__init__(orientation="vertical", **kwargs)
@@ -712,7 +817,148 @@ class CarDoctorUI(BoxLayout):
         self.content_box.add_widget(self.chart)
 
         # ---------------------------------------------------------------------
-        # 4. Panel symulatora awarii & scenariuszy demo
+        # 4. Panel ustawień połączenia (Bluetooth Mobile / USB Laptop)
+        # ---------------------------------------------------------------------
+        settings_card = StyledCard(
+            orientation="vertical",
+            size_hint_y=None,
+            height=215,
+            padding=[14, 12, 14, 12],
+            spacing=8,
+        )
+
+        settings_header = BoxLayout(size_hint_y=None, height=24, spacing=6)
+        settings_title = Label(
+            text="⚙️ USTAWIENIA POŁĄCZENIA OBD-II",
+            font_size="13sp",
+            bold=True,
+            color=COLOR_TEXT_MUTED,
+            size_hint_x=0.7,
+            halign="left",
+            valign="middle",
+        )
+        settings_header.add_widget(settings_title)
+        settings_card.add_widget(settings_header)
+
+        # Szybkie profile połączenia
+        profiles_grid = GridLayout(cols=5, spacing=4, size_hint_y=None, height=34)
+
+        self.btn_prof_mobile_bt = Button(
+            text="📱 Mobile BT",
+            font_size="10sp",
+            bold=True,
+            background_normal="",
+            background_color=COLOR_PRIMARY,
+        )
+        self.btn_prof_mobile_bt.bind(on_press=lambda _b: self.on_select_connection_profile("mobile_bt"))
+        profiles_grid.add_widget(self.btn_prof_mobile_bt)
+
+        self.btn_prof_laptop_linux = Button(
+            text="💻 Linux USB",
+            font_size="10sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.18, 0.22, 0.30, 1.0),
+        )
+        self.btn_prof_laptop_linux.bind(on_press=lambda _b: self.on_select_connection_profile("laptop_usb_linux"))
+        profiles_grid.add_widget(self.btn_prof_laptop_linux)
+
+        self.btn_prof_laptop_win = Button(
+            text="💻 Win COM",
+            font_size="10sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.18, 0.22, 0.30, 1.0),
+        )
+        self.btn_prof_laptop_win.bind(on_press=lambda _b: self.on_select_connection_profile("laptop_usb_win"))
+        profiles_grid.add_widget(self.btn_prof_laptop_win)
+
+        self.btn_prof_laptop_bt = Button(
+            text="💻 Laptop BT",
+            font_size="10sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.18, 0.22, 0.30, 1.0),
+        )
+        self.btn_prof_laptop_bt.bind(on_press=lambda _b: self.on_select_connection_profile("laptop_bt"))
+        profiles_grid.add_widget(self.btn_prof_laptop_bt)
+
+        self.btn_prof_auto = Button(
+            text="🔍 Auto",
+            font_size="10sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.18, 0.22, 0.30, 1.0),
+        )
+        self.btn_prof_auto.bind(on_press=lambda _b: self.on_select_connection_profile("auto"))
+        profiles_grid.add_widget(self.btn_prof_auto)
+
+        settings_card.add_widget(profiles_grid)
+
+        # Wiersz konfiguracji portu i prędkości baudrate
+        config_row = BoxLayout(size_hint_y=None, height=36, spacing=8)
+        config_row.add_widget(Label(text="Port / ID:", font_size="12sp", color=COLOR_TEXT_MUTED, size_hint_x=0.25))
+        self.port_input = TextInput(
+            text="OBDII",
+            multiline=False,
+            font_size="12sp",
+            size_hint_x=0.45,
+            background_color=(0.15, 0.20, 0.30, 1.0),
+            foreground_color=(1, 1, 1, 1),
+        )
+        config_row.add_widget(self.port_input)
+
+        self.btn_baud_select = Button(
+            text="38400 baud",
+            font_size="11sp",
+            size_hint_x=0.30,
+            background_normal="",
+            background_color=(0.20, 0.26, 0.36, 1.0),
+        )
+        self.btn_baud_select.bind(on_press=self.on_cycle_baudrate)
+        config_row.add_widget(self.btn_baud_select)
+        settings_card.add_widget(config_row)
+
+        # Wiersz akcji połączenia
+        conn_actions = BoxLayout(size_hint_y=None, height=36, spacing=8)
+        self.connect_btn = Button(
+            text="🔌 Połącz z adapterem",
+            font_size="12sp",
+            bold=True,
+            size_hint_x=0.65,
+            background_normal="",
+            background_color=COLOR_SUCCESS,
+        )
+        self.connect_btn.bind(on_press=self.on_connect_obd)
+        conn_actions.add_widget(self.connect_btn)
+
+        self.disconnect_btn = Button(
+            text="Rozłącz",
+            font_size="12sp",
+            size_hint_x=0.35,
+            background_normal="",
+            background_color=(0.18, 0.22, 0.30, 1.0),
+        )
+        self.disconnect_btn.bind(on_press=self.on_disconnect_obd)
+        conn_actions.add_widget(self.disconnect_btn)
+        settings_card.add_widget(conn_actions)
+
+        # Etykieta statusu połączenia
+        self.connection_status_label = Label(
+            text="Aktywny profil: 📱 Mobile Bluetooth (OBDII, 38400 baud)",
+            font_size="11sp",
+            color=COLOR_TEXT_MUTED,
+            size_hint_y=None,
+            height=18,
+            halign="left",
+            valign="middle",
+        )
+        settings_card.add_widget(self.connection_status_label)
+
+        self.content_box.add_widget(settings_card)
+
+        # ---------------------------------------------------------------------
+        # 5. Panel symulatora awarii & scenariuszy demo
         # ---------------------------------------------------------------------
         sim_container = StyledCard(
             orientation="vertical",
@@ -746,7 +992,6 @@ class CarDoctorUI(BoxLayout):
         sim_header.add_widget(self.sim_toggle_btn)
         sim_container.add_widget(sim_header)
 
-        # Siatka przycisków scenariuszy
         scenarios_grid = GridLayout(cols=3, spacing=6, size_hint_y=None, height=72)
 
         self.btn_scen_clean = Button(
@@ -803,7 +1048,7 @@ class CarDoctorUI(BoxLayout):
         self.content_box.add_widget(sim_container)
 
         # ---------------------------------------------------------------------
-        # 5. Panel raportu diagnostycznego AI
+        # 6. Panel raportu diagnostycznego AI
         # ---------------------------------------------------------------------
         self.report_card = StyledCard(
             orientation="vertical",
@@ -844,7 +1089,7 @@ class CarDoctorUI(BoxLayout):
         self.content_box.add_widget(self.report_card)
 
         # ---------------------------------------------------------------------
-        # 6. Panel akcji (Skanowanie, Asystent głosowy, Dwuetapowe kasowanie)
+        # 7. Panel akcji (Skanowanie, Asystent głosowy, Dwuetapowe kasowanie)
         # ---------------------------------------------------------------------
         actions_card = StyledCard(
             orientation="vertical",
@@ -907,11 +1152,9 @@ class CarDoctorUI(BoxLayout):
         voltage = t.get("voltage", 0.0)
         self.voltage_label.text = f"Napięcie: {voltage:.1f} V"
 
-        # Aktualizacja wykresu trendu
         hist = self.controller.get_telemetry_history(self.chart.current_metric)
         self.chart.update_history(hist)
 
-        # Dynamiczne akcenty kolorystyczne
         if coolant >= 115:
             self.coolant_label.color = COLOR_DANGER
         elif coolant >= 105:
@@ -923,6 +1166,60 @@ class CarDoctorUI(BoxLayout):
             self.voltage_label.color = COLOR_WARNING
         else:
             self.voltage_label.color = COLOR_SUCCESS
+
+    def on_select_connection_profile(self, profile_key: str) -> None:
+        """Wybiera profil połączenia i aktualizuje pola w GUI."""
+        prof = self.controller.apply_connection_profile(profile_key)
+        self.port_input.text = prof.get("port", "")
+        baud = prof.get("baudrate", 38400)
+        self.btn_baud_select.text = f"{baud} baud" if baud > 0 else "Auto baud"
+
+        # Aktualizacja wizualnego podświetlenia przycisków profili
+        btns = {
+            "mobile_bt": self.btn_prof_mobile_bt,
+            "laptop_usb_linux": self.btn_prof_laptop_linux,
+            "laptop_usb_win": self.btn_prof_laptop_win,
+            "laptop_bt": self.btn_prof_laptop_bt,
+            "auto": self.btn_prof_auto,
+        }
+        for k, btn in btns.items():
+            btn.background_color = COLOR_PRIMARY if k == profile_key else (0.18, 0.22, 0.30, 1.0)
+
+        self.connection_status_label.text = f"Aktywny profil: {prof['name']} ({prof.get('port') or 'Auto'})"
+        self.status_label.text = f"Wybrano profil: {prof['name']}"
+
+    def on_cycle_baudrate(self, _btn=None) -> None:
+        """Przełącza cyklicznie prędkości transmisji baudrate."""
+        rates = [38400, 115200, 9600, 0]
+        curr_baud = self.controller.connection_config.get("baudrate", 38400)
+        idx = rates.index(curr_baud) if curr_baud in rates else 0
+        next_baud = rates[(idx + 1) % len(rates)]
+        self.controller.connection_config["baudrate"] = next_baud
+        self.btn_baud_select.text = f"{next_baud} baud" if next_baud > 0 else "Auto baud"
+
+    def on_connect_obd(self, _btn=None) -> None:
+        """Próbuje nawiązać połączenie z adapterem ELM327 na podstawie ustawień z GUI."""
+        port = self.port_input.text.strip()
+        baud = self.controller.connection_config.get("baudrate", 38400)
+        self.controller.update_connection_settings(port=port, baudrate=baud)
+
+        self.connection_status_label.text = f"Łączenie z {port or 'Auto'}..."
+        res = self.controller.connect_obd(port=port, baudrate=baud)
+
+        self.connection_status_label.text = res["message"]
+        self.status_label.text = res["message"]
+        if res["connected"]:
+            self.connect_btn.background_color = COLOR_SUCCESS
+            self.on_refresh_telemetry()
+        else:
+            self.connect_btn.background_color = (0.25, 0.30, 0.40, 1.0)
+
+    def on_disconnect_obd(self, _btn=None) -> None:
+        """Rozłącza aktywne połączenie."""
+        res = self.controller.disconnect_obd()
+        self.connection_status_label.text = res["message"]
+        self.status_label.text = "Adapter OBD rozłączony"
+        self.connect_btn.background_color = COLOR_SUCCESS
 
     def on_toggle_simulation(self, _btn=None) -> None:
         """Przełącza tryb symulacji włączony / wyłączony."""
@@ -947,7 +1244,6 @@ class CarDoctorUI(BoxLayout):
         self.sim_toggle_btn.background_color = COLOR_SUCCESS
         self.status_label.text = f"Załadowano scenariusz: {scen['name']}"
         self.update_telemetry_ui()
-        # Automatyczne uruchomienie skanowania i diagnozy dla szybkiej weryfikacji
         self.on_scan_errors()
 
     def on_refresh_telemetry(self, _btn=None) -> None:
