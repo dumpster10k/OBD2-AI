@@ -36,6 +36,7 @@ from services.sensor_database import get_standard_obd2_sensors, get_vag_sensors
 from services.sensor_manager import SensorDefinition, SensorManager
 from services.speech_service import (
     RECOMMENDED_SPEECH_MODELS,
+    LiveAudioRecorder,
     MockSTTBackend,
     MockTTSBackend,
     SpeechModelSpec,
@@ -75,6 +76,7 @@ __all__ = [
     "RECOMMENDED_SPEECH_MODELS",
     "STTBackend",
     "TTSBackend",
+    "LiveAudioRecorder",
     "MockSTTBackend",
     "MockTTSBackend",
     "SpeechService",

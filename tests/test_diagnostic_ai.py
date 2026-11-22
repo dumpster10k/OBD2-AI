@@ -168,3 +168,32 @@ def test_abstract_diagnostic_ai():
 
     with pytest.raises(NotImplementedError):
         DummyAI().analyze({})
+
+
+def test_dtc_p0101_maf_explanation():
+    engine = RuleBasedDiagnosticAI()
+    report = engine.analyze({"dtc_codes": ["P0101"]})
+    assert len(report.dtc_findings) == 1
+    finding = report.dtc_findings[0]
+    assert finding.code == "P0101"
+    assert "Przepływomierz" in finding.title
+    assert "lewe powietrze" in " ".join(finding.possible_causes).lower()
+    assert report.safe_to_drive is True
+
+
+def test_dtc_correlation_p0171_and_p0101():
+    engine = RuleBasedDiagnosticAI()
+    report = engine.analyze({"dtc_codes": ["P0171", "P0101"]})
+    assert len(report.dtc_findings) == 2
+    assert "Korelacja usterek" in report.summary
+    assert "lewego powietrza" in report.summary
+    assert report.safe_to_drive is True
+    # Weryfikacja hands-free: automatyczna archiwizacja ramek
+    assert any("automatycznie zarchiwizowane" in step for step in report.next_steps)
+
+
+def test_dtc_correlation_misfire_and_lean():
+    engine = RuleBasedDiagnosticAI()
+    report = engine.analyze({"dtc_codes": ["P0300", "P0171"]})
+    assert "Korelacja usterek" in report.summary
+    assert "wywołane skrajnie ubogą mieszanką" in report.summary

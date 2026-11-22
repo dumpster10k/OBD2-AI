@@ -668,7 +668,32 @@ class DashboardController:
 
         self.latest_report = self.ai.analyze_context(vehicle_context)
         self.dtc_clear_pending = False
+
+        # Automatyczne utrwalenie ramki zamrożonej (Freeze Frame) w bazie SQLite
+        if self.telemetry_logger and dtc_str_list:
+            sess_id = self.current_session_id or "auto_freeze_frame"
+            for code in dtc_str_list:
+                try:
+                    self.telemetry_logger.log_dtc(
+                        session_id=sess_id,
+                        code=code,
+                        telemetry_snapshot=self.telemetry,
+                    )
+                except Exception:
+                    pass
+
         return self.current_dtcs, self.latest_report
+
+    def get_microphone_status(self) -> dict[str, Any]:
+        """Zwraca informacje o dostępności i stanie fizycznego mikrofonu."""
+        if hasattr(self, "ai") and hasattr(self.ai, "voice") and hasattr(self.ai.voice, "speech"):
+            return self.ai.voice.speech.get_microphone_status()
+        return {
+            "is_available": False,
+            "is_live": False,
+            "device_name": "Brak",
+            "message": "Serwis mowy niedostępny",
+        }
 
     def request_clear_dtc(self) -> dict[str, Any]:
         """Inicjuje procedurę kasowania błędów DTC pod warunkiem postoju pojazdu (wymóg AGENTS.md)."""
@@ -1438,8 +1463,14 @@ class CarDoctorUI(BoxLayout):
         self.voice_card.add_widget(voice_live_row)
 
         # Etykiety statusu i odpowiedzi asystenta
+        mic_info = self.controller.get_microphone_status()
+        init_mic_msg = (
+            f"Gotowy - mikrofon aktywny ({mic_info['device_name']})"
+            if mic_info.get("is_live")
+            else "Gotowy (mikrofon niedostępny na PC - wpisz pytanie w polu tekstowym)"
+        )
         self.voice_status_label = Label(
-            text="Gotowy (naciśnij nagrywanie lub wybierz szybką komendę)",
+            text=init_mic_msg,
             font_size="11sp",
             size_hint_y=None,
             height=20,
@@ -1873,6 +1904,13 @@ class CarDoctorUI(BoxLayout):
 
     def on_voice_record_button(self, _btn=None) -> None:
         """Nagrywa mowę z mikrofonu i przetwarza przez STT -> Analiza -> TTS."""
+        mic_status = self.controller.get_microphone_status()
+        if not mic_status.get("is_live"):
+            self.voice_status_label.text = "Mikrofon fizyczny niedostępny (użyj pola obok lub zainstaluj sounddevice)"
+            self.status_label.text = "Głos: Brak fizycznego mikrofonu"
+            return
+
+        self.voice_status_label.text = "🔴 Nagrywanie dźwięku (3s)..."
         query, answer, _ = self.controller.record_and_handle_voice()
         self.voice_status_label.text = f'Rozpoznano mowę: "{query}"'
         self.voice_response_label.text = answer

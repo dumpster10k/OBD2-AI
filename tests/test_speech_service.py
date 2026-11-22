@@ -232,3 +232,34 @@ def test_ai_engine_voice_text_command():
     assert q == "Czy mogę jechać dalej?"
     assert "Możesz kontynuować" in resp
     assert len(audio) > 44
+
+
+def test_live_audio_recorder_and_mic_status():
+    from unittest.mock import MagicMock, patch
+
+    from services.speech_service import LiveAudioRecorder, SpeechService
+
+    # Test bez sounddevice (fallback)
+    recorder = LiveAudioRecorder()
+    assert isinstance(recorder.device_name, str)
+
+    service = SpeechService()
+    status = service.get_microphone_status()
+    assert "is_available" in status
+    assert "is_live" in status
+    assert "message" in status
+
+    # Test z mockowanym sounddevice
+    mock_sd = MagicMock()
+    mock_sd.query_devices.return_value = [{"name": "USB Mic", "max_input_channels": 2}]
+    mock_sd.default.device = [0, 1]
+    mock_rec = MagicMock()
+    mock_rec.tobytes.return_value = b"\x00\x00" * 16000
+    mock_sd.rec.return_value = mock_rec
+
+    with patch.dict("sys.modules", {"sounddevice": mock_sd}):
+        assert LiveAudioRecorder.is_available() is True
+        live_rec = LiveAudioRecorder(device=0)
+        assert live_rec.device_name == "USB Mic"
+        wav_data = live_rec.record(duration_sec=1.0)
+        assert len(wav_data) > 44
