@@ -159,6 +159,12 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local databases and exported telemetry
+*.db
+*.sqlite3
+data/
+*.csv
+
 # Spyder project settings
 .spyderproject
 .spyproject

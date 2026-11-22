@@ -25,6 +25,7 @@ from services.speech_service import (
     TTSBackend,
     VoiceDiagnosticAssistant,
 )
+from services.telemetry_logger import TelemetryLogger, mask_vin
 
 __all__ = [
     "AIEngine",
@@ -50,4 +51,6 @@ __all__ = [
     "MockTTSBackend",
     "SpeechService",
     "VoiceDiagnosticAssistant",
+    "TelemetryLogger",
+    "mask_vin",
 ]
