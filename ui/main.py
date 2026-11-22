@@ -1414,7 +1414,9 @@ class CarDoctorUI(BoxLayout):
         )
         card_rpm.add_widget(Label(text="OBROTY", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16))
         self.rpm_label = Label(text="Obroty: 0 RPM", font_size="17sp", bold=True, color=(0.06, 0.73, 0.85, 1.0))
-        self.rpm_min_max_label = Label(text="Min: 0 | Max: 0", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14)
+        self.rpm_min_max_label = Label(
+            text="Min: 0 | Max: 0", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14
+        )
         card_rpm.add_widget(self.rpm_label)
         card_rpm.add_widget(self.rpm_min_max_label)
         self.grid_telemetry.add_widget(card_rpm)
@@ -1428,7 +1430,9 @@ class CarDoctorUI(BoxLayout):
             Label(text="PRĘDKOŚĆ", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16)
         )
         self.speed_label = Label(text="Prędkość: 0 km/h", font_size="17sp", bold=True, color=(0.06, 0.73, 0.85, 1.0))
-        self.speed_min_max_label = Label(text="Min: 0 | Max: 0", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14)
+        self.speed_min_max_label = Label(
+            text="Min: 0 | Max: 0", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14
+        )
         card_speed.add_widget(self.speed_label)
         card_speed.add_widget(self.speed_min_max_label)
         self.grid_telemetry.add_widget(card_speed)
@@ -1442,7 +1446,9 @@ class CarDoctorUI(BoxLayout):
             Label(text="PŁYN CHŁODZĄCY", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16)
         )
         self.coolant_label = Label(text="Temp. płynu: 0 °C", font_size="17sp", bold=True, color=(0.16, 0.80, 0.53, 1.0))
-        self.coolant_min_max_label = Label(text="Min: 0°C | Max: 0°C", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14)
+        self.coolant_min_max_label = Label(
+            text="Min: 0°C | Max: 0°C", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14
+        )
         card_coolant.add_widget(self.coolant_label)
         card_coolant.add_widget(self.coolant_min_max_label)
         self.grid_telemetry.add_widget(card_coolant)
@@ -1456,7 +1462,9 @@ class CarDoctorUI(BoxLayout):
             Label(text="AKUMULATOR", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16)
         )
         self.voltage_label = Label(text="Napięcie: 0.0 V", font_size="17sp", bold=True, color=(0.16, 0.80, 0.53, 1.0))
-        self.voltage_min_max_label = Label(text="Min: 0.0V | Max: 0.0V", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14)
+        self.voltage_min_max_label = Label(
+            text="Min: 0.0V | Max: 0.0V", font_size="10sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=14
+        )
         card_volt.add_widget(self.voltage_label)
         card_volt.add_widget(self.voltage_min_max_label)
         self.grid_telemetry.add_widget(card_volt)
@@ -2524,7 +2532,11 @@ class CarDoctorUI(BoxLayout):
             is_conn = self.controller.obd.is_connected()
             self.bar_obd_status.text = "🟢 OBD: Połączono" if is_conn else "🔌 OBD: Rozłączony"
             self.bar_obd_status.color = COLOR_SUCCESS if is_conn else COLOR_TEXT_MUTED
-            prof_name = getattr(self.controller.vehicle_profile, "engine_name", "Standard") if self.controller.vehicle_profile else "Standard"
+            prof_name = (
+                getattr(self.controller.vehicle_profile, "engine_name", "Standard")
+                if self.controller.vehicle_profile
+                else "Standard"
+            )
             self.bar_vehicle_profile.text = f"🚗 {prof_name[:16]}"
             self.bar_mic.text = "🎙️ Mic: ON" if self.controller.mic_enabled else "🎙️ Mic: OFF"
             self.bar_mic.color = COLOR_SUCCESS if self.controller.mic_enabled else COLOR_DANGER

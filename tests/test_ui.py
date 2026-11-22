@@ -857,3 +857,128 @@ def test_dashboard_controller_knowledge_base_methods():
     # Wyszukanie z potwierdzeniem użytkownika
     res_with_consent = controller.lookup_dtc_knowledge(code_unknown, allow_web=True)
     assert res_with_consent.status.value == "found_online"
+
+
+def test_car_scanner_tab_navigation_and_views():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=2000, speed=50, coolant=90, voltage=14.0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Domyślna zakładka to 'dashboard'
+    assert ui.active_tab == "dashboard"
+    assert ui.section_dashboard in ui.tab_container.children
+
+    # Przełączenie na Wszystkie sensory
+    ui.set_active_tab("all_sensors")
+    assert ui.active_tab == "all_sensors"
+    assert ui.section_all_sensors in ui.tab_container.children
+
+    # Przełączenie na Wykresy
+    ui.set_active_tab("charts")
+    assert ui.active_tab == "charts"
+    assert ui.section_charts in ui.tab_container.children
+
+    # Przełączenie na Diagnoza & AI
+    ui.set_active_tab("diagnostics")
+    assert ui.active_tab == "diagnostics"
+    assert ui.section_diagnostics in ui.tab_container.children
+
+    # Przełączenie na Ustawienia
+    ui.set_active_tab("settings")
+    assert ui.active_tab == "settings"
+    assert ui.section_settings in ui.tab_container.children
+
+    # Przełączenie na Pełny widok
+    ui.set_active_tab("all")
+    assert ui.active_tab == "all"
+    assert ui.section_dashboard in ui.tab_container.children
+    assert ui.section_all_sensors in ui.tab_container.children
+    assert ui.section_charts in ui.tab_container.children
+    assert ui.section_diagnostics in ui.tab_container.children
+    assert ui.section_settings in ui.tab_container.children
+
+
+def test_car_scanner_quick_status_bar_updates():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=1800, speed=45, coolant=88, voltage=14.2)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Odświeżenie telemetrii aktualizuje szybki pasek statusu
+    ui.on_refresh_telemetry()
+    assert "14.2 V" in ui.bar_voltage.text
+    assert "45 km/h" in ui.bar_speed.text
+    assert "OBD: Połączono" in ui.bar_obd_status.text
+    assert "Mic: ON" in ui.bar_mic.text
+
+    # Wyłączenie mikrofonu
+    ui.on_toggle_mic(ui.mic_btn)
+    ui.update_telemetry_ui()
+    assert "Mic: OFF" in ui.bar_mic.text
+
+
+def test_car_scanner_min_max_labels():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=2500, speed=70, coolant=95, voltage=13.9)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Symulacja kilku próbek historii
+    controller.telemetry_history["rpm"] = [800.0, 1500.0, 3200.0]
+    controller.telemetry_history["coolant_temp"] = [70.0, 85.0, 96.0]
+    controller.telemetry_history["speed"] = [0.0, 40.0, 90.0]
+    controller.telemetry_history["voltage"] = [12.2, 13.8, 14.4]
+
+    ui.update_telemetry_ui()
+
+    assert "Min: 800" in ui.rpm_min_max_label.text
+    assert "Max: 3200" in ui.rpm_min_max_label.text
+    assert "Min: 70°C" in ui.coolant_min_max_label.text
+    assert "Max: 96°C" in ui.coolant_min_max_label.text
+    assert "Min: 0" in ui.speed_min_max_label.text
+    assert "Max: 90" in ui.speed_min_max_label.text
+    assert "Min: 12.2V" in ui.voltage_min_max_label.text
+    assert "Max: 14.4V" in ui.voltage_min_max_label.text
+
+
+def test_car_scanner_all_sensors_screen_and_filtering():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=2100, speed=55, coolant=89, voltage=14.1)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Wejście w zakładkę all_sensors
+    ui.set_active_tab("all_sensors")
+    assert len(ui.all_sensors_grid.children) > 0
+
+    # Filtrowanie po nazwie lub PID (np. obroty lub 010C)
+    ui.sensor_search_input.text = "010C"
+    ui.on_sensor_search_change(ui.sensor_search_input, "010C")
+    assert len(ui.all_sensors_grid.children) >= 1
+
+    # Wyszukanie czujnika, który nie istnieje
+    ui.on_sensor_search_change(ui.sensor_search_input, "nieistniejacy_sensor_xyz_99")
+    assert len(ui.all_sensors_grid.children) == 0
+
+
+def test_dial_gauge_widget_rendering_and_status():
+    from ui.main import DialGaugeWidget
+
+    gauge = DialGaugeWidget("coolant_temp")
+    assert "TEMPERATURA" in gauge.title_label.text.upper()
+
+    # Wartość optymalna (90°C)
+    gauge.update_value(90.0)
+    assert "90 °C" in gauge.value_label.text
+    assert "OPTYMALNY" in gauge.status_badge.text
+
+    # Wartość ostrzegawcza (102°C)
+    gauge.update_value(102.0)
+    assert "102 °C" in gauge.value_label.text
+    assert "OSTRZEŻENIE" in gauge.status_badge.text
+
+    # Wartość krytyczna (120°C)
+    gauge.update_value(120.0)
+    assert "120 °C" in gauge.value_label.text
+    assert "KRYTYCZNY" in gauge.status_badge.text
