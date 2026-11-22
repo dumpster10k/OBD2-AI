@@ -14,6 +14,14 @@ from services.llm_engine import (
     MockLLMBackend,
     RECOMMENDED_LLM_MODELS,
 )
+from services.ecu_interpreter import (
+    ECUResponseFrame,
+    decode_dtc_bytes,
+    decode_dtc_frame,
+    decode_pid_response,
+    format_log_summary,
+    parse_raw_ecu_log,
+)
 from services.sensor_manager import SensorDefinition, SensorManager
 from services.speech_service import (
     MockSTTBackend,
@@ -53,4 +61,10 @@ __all__ = [
     "VoiceDiagnosticAssistant",
     "TelemetryLogger",
     "mask_vin",
+    "ECUResponseFrame",
+    "decode_dtc_bytes",
+    "decode_dtc_frame",
+    "decode_pid_response",
+    "parse_raw_ecu_log",
+    "format_log_summary",
 ]
