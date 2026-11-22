@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import pytest
-
 from core.obd_client import OBDClient
-from services.ai_engine import AIEngine
 from services.diagnostic_ai import DiagnosisReport
 from services.llm_engine import LLMModelSpec
 from services.speech_service import SpeechModelSpec
 from ui.main import (
-    AIDoctorApp,
     COLOR_DANGER,
     COLOR_SUCCESS,
+    AIDoctorApp,
     CarDoctorUI,
     DashboardController,
 )
@@ -32,17 +29,21 @@ class FakeOBDConnection:
     def query(self, cmd):
         name = getattr(cmd, "name", "")
         if "GET_DTC" in name:
+
             class DTCRes:
                 value = self.dtc
+
             return DTCRes()
         if "CLEAR_DTC" in name:
             self.cleared = True
             if self.clear_succeeds:
                 self.dtc = []
             succ = self.clear_succeeds
+
             class ClearRes:
                 def was_successful(self):
                     return succ
+
             return ClearRes()
         if "RPM" in name:
             return type("Res", (), {"value": type("Val", (), {"magnitude": self.rpm})()})()
@@ -250,6 +251,8 @@ def test_ai_doctor_app_build_and_run(monkeypatch):
     assert isinstance(widget, CarDoctorUI)
     monkeypatch.setattr(app, "run", lambda: None)
     app.run()
+
+
 def test_car_doctor_ui_telemetry_warning_and_critical_colors():
     fake_conn = FakeOBDConnection(
         dtc=[],
@@ -345,6 +348,7 @@ def test_dashboard_controller_telemetry_history_buffer():
 
 def test_telemetry_chart_metrics_and_history():
     from ui.main import TelemetryChart
+
     chart = TelemetryChart()
 
     # Zmiana metryk
@@ -597,8 +601,6 @@ def test_car_doctor_ui_telemetry_logging_controls():
     assert "Zatrzymano rejestrację" in ui.status_label.text
 
 
-
-
 # =====================================================================
 # NOWE TESTY SELEKTORA MODELI AI I MOWY (z feature/ai-model-selection)
 # =====================================================================
@@ -705,11 +707,11 @@ def test_car_doctor_ui_speech_selection():
     # Pobranie pierwszego przycisku z karty STT
     if ui.speech_grid.children:
         stt_col = ui.speech_grid.children[0]
-        if hasattr(stt_col, 'children') and stt_col.children:
+        if hasattr(stt_col, "children") and stt_col.children:
             first_card = stt_col.children[0]
-            if hasattr(first_card, 'children') and first_card.children:
+            if hasattr(first_card, "children") and first_card.children:
                 first_btn = first_card.children[-1]  # Ostatni widżet to przycisk
-                if hasattr(first_btn, 'user_data'):
+                if hasattr(first_btn, "user_data"):
                     model, model_type = first_btn.user_data
                     if model and model_type == "STT":
                         # Wybór modelu STT
@@ -763,9 +765,9 @@ def test_car_doctor_ui_model_selection():
     # Pobranie pierwszego przycisku z karty modelu
     if ui.models_grid.children:
         first_card = ui.models_grid.children[0]
-        if hasattr(first_card, 'children') and first_card.children:
+        if hasattr(first_card, "children") and first_card.children:
             first_btn = first_card.children[-1]  # Ostatni widżet to przycisk
-            if hasattr(first_btn, 'user_data'):
+            if hasattr(first_btn, "user_data"):
                 model = first_btn.user_data
                 if model:
                     # Wybór modelu
@@ -775,6 +777,3 @@ def test_car_doctor_ui_model_selection():
                     assert controller.current_model_spec == model
                     assert "Model AI:" in ui.model_status_label.text
                     assert tuple(ui.model_status_label.color) == COLOR_SUCCESS
-
-
-

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import pytest
 from services.telemetry_metrics import (
-    MetricThresholds,
     STANDARD_METRIC_THRESHOLDS,
     calculate_series_stats,
-    value_to_gauge_angle,
     evaluate_metric_status,
+    value_to_gauge_angle,
 )
 
 

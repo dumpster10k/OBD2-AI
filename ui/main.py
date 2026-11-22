@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 import sys
+from pathlib import Path
 from typing import Any, Optional
 
 # Zapewnienie dostępności modułów nadrzędnych (core, services)
 project_root = str(Path(__file__).resolve().parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
+
 
 class WidgetStub:
     """Uniwersalna atrapa widżetów Kivy dla środowisk CI / headless / fallback."""
@@ -44,6 +45,7 @@ class WidgetStub:
     def setter(self, name: str) -> Any:
         def _setter(val: Any) -> None:
             setattr(self, name, val)
+
         return _setter
 
 
@@ -92,32 +94,31 @@ except ImportError:
         pass
 
 
-from core.obd_client import ConnectionConfig, OBDClient
+from core.obd_client import OBDClient
 from services.ai_engine import AIEngine
 from services.diagnostic_ai import DiagnosisReport
 from services.llm_engine import (
     DISCLAIMER_TEXT,
-    LLMModelSpec,
     RECOMMENDED_LLM_MODELS,
+    LLMModelSpec,
 )
 from services.speech_service import (
-    SpeechModelSpec,
     RECOMMENDED_SPEECH_MODELS,
-    SpeechService,
+    SpeechModelSpec,
 )
 from services.telemetry_logger import TelemetryLogger
 
 logger = logging.getLogger(__name__)
 
 # Paleta kolorów — motyw Dark Cyber Automotive
-COLOR_BG = (0.06, 0.09, 0.16, 1.0)          # Głęboki grafit tła #0F172A
-COLOR_CARD = (0.12, 0.16, 0.24, 1.0)        # Karty powierzchniowe #1E293B
-COLOR_CARD_BORDER = (0.20, 0.25, 0.35, 1.0) # Ramki kart #334155
-COLOR_PRIMARY = (0.01, 0.52, 0.78, 1.0)     # Akcent główny (Cyan/Blue #0284C7)
-COLOR_SUCCESS = (0.06, 0.72, 0.51, 1.0)     # Sukces / Bezpieczny (Emerald #10B981)
-COLOR_WARNING = (0.96, 0.62, 0.14, 1.0)     # Ostrzeżenie (Amber #F59E0B)
-COLOR_DANGER = (0.88, 0.11, 0.28, 1.0)      # Krytyczny / Kasowanie (Rose #E11D48)
-COLOR_VOICE = (0.49, 0.23, 0.93, 1.0)       # Asystent mowy (Violet #7C3AED)
+COLOR_BG = (0.06, 0.09, 0.16, 1.0)  # Głęboki grafit tła #0F172A
+COLOR_CARD = (0.12, 0.16, 0.24, 1.0)  # Karty powierzchniowe #1E293B
+COLOR_CARD_BORDER = (0.20, 0.25, 0.35, 1.0)  # Ramki kart #334155
+COLOR_PRIMARY = (0.01, 0.52, 0.78, 1.0)  # Akcent główny (Cyan/Blue #0284C7)
+COLOR_SUCCESS = (0.06, 0.72, 0.51, 1.0)  # Sukces / Bezpieczny (Emerald #10B981)
+COLOR_WARNING = (0.96, 0.62, 0.14, 1.0)  # Ostrzeżenie (Amber #F59E0B)
+COLOR_DANGER = (0.88, 0.11, 0.28, 1.0)  # Krytyczny / Kasowanie (Rose #E11D48)
+COLOR_VOICE = (0.49, 0.23, 0.93, 1.0)  # Asystent mowy (Violet #7C3AED)
 COLOR_TEXT_MUTED = (0.58, 0.64, 0.72, 1.0)  # Tekst pomocniczy #94A3B8
 
 # Profile połączeń z adapterem OBD (Mobile Bluetooth vs Laptop USB / Bluetooth)
@@ -213,9 +214,7 @@ class StyledCard(BoxLayout):
         if KIVY_AVAILABLE:
             with self.canvas.before:
                 self._bg_col = Color(*self.bg_color)
-                self._bg_rect = RoundedRectangle(
-                    pos=self.pos, size=self.size, radius=[self.radius]
-                )
+                self._bg_rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[self.radius])
                 if self.border_color:
                     self._line_col = Color(*self.border_color)
                     self._line_rect = Line(
@@ -375,9 +374,13 @@ class TelemetryChart(StyledCard):
         max_v = max(self.history) if self.history else 0.0
 
         if self.current_metric == "voltage":
-            self.stats_label.text = f"Bieżące: {curr:.2f} V | Min: {min_v:.2f} V | Max: {max_v:.2f} V (próbek: {len(self.history)})"
+            self.stats_label.text = (
+                f"Bieżące: {curr:.2f} V | Min: {min_v:.2f} V | Max: {max_v:.2f} V (próbek: {len(self.history)})"
+            )
         elif self.current_metric == "coolant_temp":
-            self.stats_label.text = f"Bieżące: {int(curr)} °C | Min: {int(min_v)} °C | Max: {int(max_v)} °C (próbek: {len(self.history)})"
+            self.stats_label.text = (
+                f"Bieżące: {int(curr)} °C | Min: {int(min_v)} °C | Max: {int(max_v)} °C (próbek: {len(self.history)})"
+            )
         elif self.current_metric == "speed":
             self.stats_label.text = f"Bieżące: {int(curr)} km/h | Min: {int(min_v)} km/h | Max: {int(max_v)} km/h (próbek: {len(self.history)})"
         else:
@@ -518,9 +521,7 @@ class DashboardController:
         self.connection_config["type"] = connection_type
         return dict(self.connection_config)
 
-    def connect_obd(
-        self, port: Optional[str] = None, baudrate: Optional[int] = None
-    ) -> dict[str, Any]:
+    def connect_obd(self, port: Optional[str] = None, baudrate: Optional[int] = None) -> dict[str, Any]:
         """Nawiązuje połączenie z adapterem ELM327 według bieżących lub zadanych ustawień."""
         target_port = port if port is not None else self.connection_config.get("port")
         target_baud = baudrate if baudrate is not None else self.connection_config.get("baudrate")
@@ -705,10 +706,7 @@ class DashboardController:
 
     def start_telemetry_logging(self, vehicle_name: str = "Pojazd") -> str:
         """Rozpoczyna rejestrację próbek telemetrii w bazie SQLite."""
-        initial_dtcs = [
-            str(c[0] if isinstance(c, (list, tuple)) else c)
-            for c in self.current_dtcs
-        ]
+        initial_dtcs = [str(c[0] if isinstance(c, (list, tuple)) else c) for c in self.current_dtcs]
         self.current_session_id = self.telemetry_logger.start_session(
             vehicle_name=vehicle_name,
             initial_dtcs=initial_dtcs,
@@ -719,10 +717,7 @@ class DashboardController:
     def stop_telemetry_logging(self) -> None:
         """Zatrzymuje rejestrację telemetrii."""
         if self.current_session_id:
-            final_dtcs = [
-                str(c[0] if isinstance(c, (list, tuple)) else c)
-                for c in self.current_dtcs
-            ]
+            final_dtcs = [str(c[0] if isinstance(c, (list, tuple)) else c) for c in self.current_dtcs]
             self.telemetry_logger.end_session(self.current_session_id, final_dtcs=final_dtcs)
         self.is_logging = False
         self.current_session_id = None
@@ -756,10 +751,7 @@ class DashboardController:
     ) -> tuple[str, str, bytes]:
         """Przetwarza zapytanie głosowe kierowcy."""
         vehicle_context = {
-            "dtc_codes": [
-                str(c[0] if isinstance(c, (list, tuple)) else c)
-                for c in self.current_dtcs
-            ],
+            "dtc_codes": [str(c[0] if isinstance(c, (list, tuple)) else c) for c in self.current_dtcs],
             "rpm": self.telemetry.get("rpm", 0),
             "speed": self.telemetry.get("speed", 0),
             "coolant_temp": self.telemetry.get("coolant_temp", 0),
@@ -780,7 +772,7 @@ class DashboardController:
         self.last_voice_query = query
         self.last_voice_response = response
         self.last_voice_audio = out_audio
-        self.voice_status_text = f"Odpowiedź wygenerowana dla: \"{query}\""
+        self.voice_status_text = f'Odpowiedź wygenerowana dla: "{query}"'
         return query, response, out_audio
 
     def record_and_handle_voice(self, duration_sec: float = 3.0) -> tuple[str, str, bytes]:
@@ -952,7 +944,9 @@ class CarDoctorUI(BoxLayout):
             padding=[8, 8, 8, 8],
             bg_color=(0.09, 0.13, 0.20, 1.0),
         )
-        card_speed.add_widget(Label(text="PRĘDKOŚĆ", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16))
+        card_speed.add_widget(
+            Label(text="PRĘDKOŚĆ", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16)
+        )
         self.speed_label = Label(text="Prędkość: 0 km/h", font_size="17sp", bold=True, color=(0.06, 0.73, 0.85, 1.0))
         card_speed.add_widget(self.speed_label)
         self.grid_telemetry.add_widget(card_speed)
@@ -962,7 +956,9 @@ class CarDoctorUI(BoxLayout):
             padding=[8, 8, 8, 8],
             bg_color=(0.09, 0.13, 0.20, 1.0),
         )
-        card_coolant.add_widget(Label(text="PŁYN CHŁODZĄCY", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16))
+        card_coolant.add_widget(
+            Label(text="PŁYN CHŁODZĄCY", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16)
+        )
         self.coolant_label = Label(text="Temp. płynu: 0 °C", font_size="17sp", bold=True, color=(0.16, 0.80, 0.53, 1.0))
         card_coolant.add_widget(self.coolant_label)
         self.grid_telemetry.add_widget(card_coolant)
@@ -972,7 +968,9 @@ class CarDoctorUI(BoxLayout):
             padding=[8, 8, 8, 8],
             bg_color=(0.09, 0.13, 0.20, 1.0),
         )
-        card_volt.add_widget(Label(text="AKUMULATOR", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16))
+        card_volt.add_widget(
+            Label(text="AKUMULATOR", font_size="11sp", color=COLOR_TEXT_MUTED, size_hint_y=None, height=16)
+        )
         self.voltage_label = Label(text="Napięcie: 0.0 V", font_size="17sp", bold=True, color=(0.16, 0.80, 0.53, 1.0))
         card_volt.add_widget(self.voltage_label)
         self.grid_telemetry.add_widget(card_volt)
@@ -1303,7 +1301,9 @@ class CarDoctorUI(BoxLayout):
             background_normal="",
             background_color=(0.20, 0.22, 0.32, 1.0),
         )
-        self.btn_cmd_temp.bind(on_press=lambda _b: self.on_quick_voice_command("Jaka jest temperatura płynu chłodzącego?"))
+        self.btn_cmd_temp.bind(
+            on_press=lambda _b: self.on_quick_voice_command("Jaka jest temperatura płynu chłodzącego?")
+        )
         quick_grid.add_widget(self.btn_cmd_temp)
 
         self.btn_cmd_volt = Button(
@@ -1343,7 +1343,9 @@ class CarDoctorUI(BoxLayout):
             background_normal="",
             background_color=(0.20, 0.22, 0.32, 1.0),
         )
-        self.btn_cmd_speed.bind(on_press=lambda _b: self.on_quick_voice_command("Z jaką prędkością jadę i jakie mam obroty?"))
+        self.btn_cmd_speed.bind(
+            on_press=lambda _b: self.on_quick_voice_command("Z jaką prędkością jadę i jakie mam obroty?")
+        )
         quick_grid.add_widget(self.btn_cmd_speed)
 
         self.btn_cmd_help = Button(
@@ -1644,7 +1646,7 @@ class CarDoctorUI(BoxLayout):
             self.model_status_label.text = f"🤖 Model AI: {model.name}"
             self.model_status_label.color = COLOR_SUCCESS
         else:
-            self.model_status_label.text = f"🤖 Model AI: Nie wybrano"
+            self.model_status_label.text = "🤖 Model AI: Nie wybrano"
             self.model_status_label.color = COLOR_TEXT_MUTED
 
     def on_toggle_mic(self, _btn: Button) -> None:
@@ -1765,7 +1767,7 @@ class CarDoctorUI(BoxLayout):
             self.model_status_label.text = f"🤖 Model AI: {self.controller.current_model_spec.name}"
             self.model_status_label.color = COLOR_SUCCESS
         else:
-            self.model_status_label.text = f"🤖 Model AI: Nie wybrano"
+            self.model_status_label.text = "🤖 Model AI: Nie wybrano"
             self.model_status_label.color = COLOR_TEXT_MUTED
 
     def on_refresh_telemetry(self, _btn=None) -> None:
@@ -1784,20 +1786,14 @@ class CarDoctorUI(BoxLayout):
             self.status_label.text = "Nie wykryto błędów DTC"
             self.urgency_badge.text = "[ Bezpieczna jazda: TAK | Brak błędów ]"
             self.urgency_badge.color = COLOR_SUCCESS
-            self.report_summary_label.text = (
-                f"Brak aktywnych kodów błędów w sterowniku ECU.\n\n{DISCLAIMER_TEXT}"
-            )
+            self.report_summary_label.text = f"Brak aktywnych kodów błędów w sterowniku ECU.\n\n{DISCLAIMER_TEXT}"
             return
 
         self.status_label.text = f"Wykryto {len(codes)} kod(y) błędów"
         if report:
             safe_text = "TAK" if report.safe_to_drive else "NIE (Zatrzymaj pojazd!)"
-            urgency_text = getattr(
-                report, "overall_urgency", getattr(report, "urgency", "info")
-            ).upper()
-            self.urgency_badge.text = (
-                f"[ Bezpieczna jazda: {safe_text} | Pilność: {urgency_text} ]"
-            )
+            urgency_text = getattr(report, "overall_urgency", getattr(report, "urgency", "info")).upper()
+            self.urgency_badge.text = f"[ Bezpieczna jazda: {safe_text} | Pilność: {urgency_text} ]"
             if not report.safe_to_drive or urgency_text == "CRITICAL":
                 self.urgency_badge.color = COLOR_DANGER
             elif urgency_text == "WARNING":
@@ -1807,9 +1803,7 @@ class CarDoctorUI(BoxLayout):
 
             steps = "\n".join(f"• {s}" for s in report.next_steps)
             self.report_summary_label.text = (
-                f"Podsumowanie: {report.summary}\n\n"
-                f"Zalecane kroki:\n{steps}\n\n"
-                f"{DISCLAIMER_TEXT}"
+                f"Podsumowanie: {report.summary}\n\nZalecane kroki:\n{steps}\n\n{DISCLAIMER_TEXT}"
             )
         else:
             self.report_summary_label.text = f"Kody: {codes}\n\n{DISCLAIMER_TEXT}"
@@ -1832,22 +1826,18 @@ class CarDoctorUI(BoxLayout):
     def on_quick_voice_command(self, prompt: str) -> None:
         """Wykonuje szybkie predefiniowane zapytanie głosowe."""
         query, answer, _ = self.controller.handle_quick_voice_command(prompt)
-        self.voice_status_label.text = f"Komenda: \"{query}\""
+        self.voice_status_label.text = f'Komenda: "{query}"'
         self.voice_response_label.text = answer
         self.status_label.text = f"Głos: {query}"
-        self.report_summary_label.text = (
-            f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
-        )
+        self.report_summary_label.text = f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
 
     def on_voice_record_button(self, _btn=None) -> None:
         """Nagrywa mowę z mikrofonu i przetwarza przez STT -> Analiza -> TTS."""
         query, answer, _ = self.controller.record_and_handle_voice()
-        self.voice_status_label.text = f"Rozpoznano mowę: \"{query}\""
+        self.voice_status_label.text = f'Rozpoznano mowę: "{query}"'
         self.voice_response_label.text = answer
         self.status_label.text = f"Głos: {query}"
-        self.report_summary_label.text = (
-            f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
-        )
+        self.report_summary_label.text = f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
 
     def on_send_custom_voice_query(self, _btn=None) -> None:
         """Wysyła zapytanie wpisane ręcznie w polu tekstowym asystenta."""
@@ -1856,23 +1846,17 @@ class CarDoctorUI(BoxLayout):
             txt = "Co z autem?"
         query, answer, _ = self.controller.handle_voice_input(text_query=txt)
         self.voice_custom_input.text = ""
-        self.voice_status_label.text = f"Zapytanie: \"{query}\""
+        self.voice_status_label.text = f'Zapytanie: "{query}"'
         self.voice_response_label.text = answer
         self.status_label.text = f"Głos: {query}"
-        self.report_summary_label.text = (
-            f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
-        )
+        self.report_summary_label.text = f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
 
     def on_voice_assistant(self, _btn=None) -> None:
-        query, answer, _ = self.controller.handle_voice_input(
-            text_query="Co z autem?"
-        )
-        self.voice_status_label.text = f"Komenda: \"{query}\""
+        query, answer, _ = self.controller.handle_voice_input(text_query="Co z autem?")
+        self.voice_status_label.text = f'Komenda: "{query}"'
         self.voice_response_label.text = answer
         self.status_label.text = f"Głos: {query}"
-        self.report_summary_label.text = (
-            f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
-        )
+        self.report_summary_label.text = f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
 
     def on_toggle_logging(self, _btn=None) -> None:
         """Włącza lub wyłącza nagrywanie próbek telemetrii do bazy SQLite."""

@@ -1,8 +1,7 @@
 from pathlib import Path
+
 import pytest
 
-from services.diagnostic_ai import RuleBasedDiagnosticAI
-from services.llm_engine import LocalLLMEngine
 from services.speech_service import (
     MockSTTBackend,
     MockTTSBackend,
@@ -71,9 +70,7 @@ def test_voice_assistant_safe_to_drive():
 
 
 def test_voice_assistant_dtc_status():
-    assistant = VoiceDiagnosticAssistant(
-        speech_service=SpeechService(stt_backend=MockSTTBackend("Jakie mam błędy?"))
-    )
+    assistant = VoiceDiagnosticAssistant(speech_service=SpeechService(stt_backend=MockSTTBackend("Jakie mam błędy?")))
     _, response, _ = assistant.handle_voice_query(
         b"voice_bytes",
         vehicle_context={"dtc_codes": ["P0171"]},
@@ -205,6 +202,7 @@ def test_voice_assistant_vehicle_health_summary():
 
 def test_audio_recorder_and_speech_service():
     from services.speech_service import MockAudioRecorder
+
     recorder = MockAudioRecorder()
     assert recorder.is_available() is True
     audio = recorder.record(duration_sec=1.0)
@@ -228,9 +226,9 @@ def test_audio_recorder_and_speech_service():
 
 def test_ai_engine_voice_text_command():
     from services.ai_engine import AIEngine
+
     ai = AIEngine()
     q, resp, audio = ai.handle_voice_text_command("Czy mogę jechać dalej?", {"dtc_codes": []})
     assert q == "Czy mogę jechać dalej?"
     assert "Możesz kontynuować" in resp
     assert len(audio) > 44
-

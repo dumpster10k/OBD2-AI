@@ -14,7 +14,8 @@
 2. Zaktualizuj gałąź bazową względem `origin/development`.
 3. Uruchom lokalną bramkę weryfikacyjną:
    `PYTHONPATH=. python -m pytest --cov=core --cov=services --cov=ui --cov-report=term-missing --cov-fail-under=80`.
-4. Zweryfikuj format i jakość zmienionych plików.
+4. Zweryfikuj format, jakość i brak błędów składniowych:
+   `ruff check . && ruff format --check .` (zainstaluj lokalny hook pre-commit: `bash scripts/install-git-hooks.sh`).
 5. Do repozytorium dołączaj wyłącznie pliki źródłowe; sekrety, tokeny, środowiska lokalne i artefakty builda izoluj w `.gitignore`.
 
 ## 3. Commity

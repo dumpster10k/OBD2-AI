@@ -1,14 +1,14 @@
 from pathlib import Path
+
 import pytest
 
-from services.diagnostic_ai import LocalDiagnosticAI, RuleBasedDiagnosticAI
+from services.diagnostic_ai import LocalDiagnosticAI
 from services.llm_engine import (
     DISCLAIMER_TEXT,
-    LLMModelSpec,
     LlamaCppBackend,
+    LLMModelSpec,
     LocalLLMEngine,
     MockLLMBackend,
-    RECOMMENDED_LLM_MODELS,
 )
 
 

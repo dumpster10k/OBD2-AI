@@ -162,7 +162,7 @@ def decode_pid_response(request_mode: str, request_pid: str, response_hex: str) 
 def parse_raw_ecu_log(log_text: str) -> list[ECUResponseFrame]:
     """Przetwarza surowy zrzut sesji komunikacji ELM327 / OBD-II na ustrukturyzowane ramki."""
     entries: list[ECUResponseFrame] = []
-    lines = [l.strip() for l in log_text.strip().splitlines() if l.strip()]
+    lines = [item.strip() for item in log_text.strip().splitlines() if item.strip()]
 
     current_cmd: Optional[str] = None
     current_responses: list[str] = []

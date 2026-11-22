@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -144,7 +145,7 @@ STANDARD_DTC_DATABASE: dict[str, dict[str, Any]] = {
 
 class RuleBasedDiagnosticAI(DiagnosticAI):
     """Deterministyczny silnik diagnostyczny oparty na regułach bezpieczeństwa i bazie DTC.
-    
+
     Gwarantuje działanie offline, brak halucynacji i absolutny priorytet bezpieczeństwa pojazdu.
     """
 
@@ -203,14 +204,10 @@ class RuleBasedDiagnosticAI(DiagnosticAI):
         battery_v = vehicle_context.get("voltage") or vehicle_context.get("battery_voltage")
         if battery_v is not None:
             if battery_v < 10.5:
-                safety_warnings.append(
-                    f"KRYTYCZNE: Napięcie akumulatora/ECU ({battery_v}V) jest krytycznie niskie!"
-                )
+                safety_warnings.append(f"KRYTYCZNE: Napięcie akumulatora/ECU ({battery_v}V) jest krytycznie niskie!")
                 safe_to_drive = False
             elif battery_v < 11.8:
-                safety_warnings.append(
-                    f"OSTRZEŻENIE: Niskie napięcie instalacji ({battery_v}V) podczas pracy."
-                )
+                safety_warnings.append(f"OSTRZEŻENIE: Niskie napięcie instalacji ({battery_v}V) podczas pracy.")
 
         # 3. Ustalenie całościowego poziomu pilności
         overall_urgency = "info"

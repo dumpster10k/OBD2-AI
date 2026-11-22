@@ -1,18 +1,10 @@
 from services.ai_engine import AIEngine, Diagnosis
 from services.diagnostic_ai import (
-    DiagnosticAI,
     DiagnosisReport,
+    DiagnosticAI,
     DTCFinding,
     LocalDiagnosticAI,
     RuleBasedDiagnosticAI,
-)
-from services.llm_engine import (
-    LLMBackend,
-    LLMModelSpec,
-    LlamaCppBackend,
-    LocalLLMEngine,
-    MockLLMBackend,
-    RECOMMENDED_LLM_MODELS,
 )
 from services.ecu_interpreter import (
     ECUResponseFrame,
@@ -22,11 +14,19 @@ from services.ecu_interpreter import (
     format_log_summary,
     parse_raw_ecu_log,
 )
+from services.llm_engine import (
+    RECOMMENDED_LLM_MODELS,
+    LlamaCppBackend,
+    LLMBackend,
+    LLMModelSpec,
+    LocalLLMEngine,
+    MockLLMBackend,
+)
 from services.sensor_manager import SensorDefinition, SensorManager
 from services.speech_service import (
+    RECOMMENDED_SPEECH_MODELS,
     MockSTTBackend,
     MockTTSBackend,
-    RECOMMENDED_SPEECH_MODELS,
     SpeechModelSpec,
     SpeechService,
     STTBackend,
@@ -35,8 +35,8 @@ from services.speech_service import (
 )
 from services.telemetry_logger import TelemetryLogger, mask_vin
 from services.telemetry_metrics import (
-    MetricThresholds,
     STANDARD_METRIC_THRESHOLDS,
+    MetricThresholds,
     calculate_series_stats,
     evaluate_metric_status,
     value_to_gauge_angle,

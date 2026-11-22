@@ -3,11 +3,10 @@ from __future__ import annotations
 import csv
 import sqlite3
 from pathlib import Path
-import pytest
 
+from core.obd_client import OBDClient
 from services.telemetry_logger import TelemetryLogger, mask_vin
 from ui.main import DashboardController
-from core.obd_client import OBDClient
 
 
 class FakeConnectionForLogger:
@@ -24,14 +23,18 @@ class FakeConnectionForLogger:
     def query(self, cmd):
         name = getattr(cmd, "name", "")
         if "GET_DTC" in name:
+
             class DTCRes:
                 value = self.dtc
+
             return DTCRes()
         if "CLEAR_DTC" in name:
             self.dtc = []
+
             class ClearRes:
                 def was_successful(self):
                     return True
+
             return ClearRes()
         if "RPM" in name:
             return type("Res", (), {"value": type("Val", (), {"magnitude": self.rpm})()})()
