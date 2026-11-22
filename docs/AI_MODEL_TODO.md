@@ -2,93 +2,69 @@
 
 ## Decyzja architektoniczna
 
-Docelowo aplikacja działa **offline-first**, bez płatnego hostingu, z modelem AI uruchamianym lokalnie na telefonie lub laptopie.
+Aplikacja działa w trybie **offline-first**, bez płatnego hostingu chmurowego, z modelem AI uruchamianym lokalnie na telefonie lub laptopie.
 
-Nie przechowujemy kluczy API w aplikacji i nie wysyłamy danych pojazdu do chmury. Internet może być używany opcjonalnie wyłącznie do aktualizacji modeli, bazy DTC lub definicji PID-ów po zgodzie użytkownika.
+Dane pojazdu nie są wysyłane do chmury, a repozytorium nie zawiera kluczy API. Opcjonalne połączenie internetowe może służyć wyłącznie do ręcznej aktualizacji bazy definicji DTC lub PID-ów za zgodą użytkownika.
 
 ## Strategia lokalna
 
-Najpierw implementujemy diagnostykę deterministyczną:
+Wdrożenie opiera się na warstwie deterministycznej uzupełnionej o model mowy i językowy:
 
-1. parser DTC,
-2. lokalna baza kodów i opisów,
-3. reguły bezpieczeństwa,
-4. analiza freeze-frame,
-5. dopiero potem lokalny LLM do wyjaśniania i rozmowy z użytkownikiem.
+1. parser kodów DTC,
+2. lokalna baza definicji i opisów,
+3. deterministyczny triage bezpieczeństwa (`RuleBasedDiagnosticAI`),
+4. lekki lokalny LLM do objaśniania usterki i dialogu z użytkownikiem,
+5. asystent głosowy kierowcy (STT/TTS hands-free).
 
-LLM nie podejmuje decyzji o kasowaniu DTC ani nie wysyła komend zapisu do ECU.
+Lokalny LLM nie podejmuje decyzji o kasowaniu DTC ani nie wysyła komend zapisu/kodowania do ECU.
 
-## Kandydaci do benchmarku
+## Rekomendowane modele
 
-Modele należy pobrać i ocenić zgodnie z aktualną licencją Hugging Face:
+Modele oceniane pod kątem efektywności mobilnej:
 
-1. **Qwen2.5-1.5B-Instruct** — główny kandydat dla Androida; dobry kompromis rozmiaru i jakości.
-2. **SmolLM2-1.7B-Instruct** — alternatywa dla słabszych telefonów.
-3. **Gemma 3 1B** — mały kandydat do porównania jakości i języka polskiego.
-4. **Phi-3.5-mini-instruct** — opcja dla laptopów i mocniejszych telefonów; prawdopodobnie zbyt ciężka jako domyślna wersja Android.
-5. **Qwen2.5-3B-Instruct** — opcja desktopowa lub dla urządzeń z większą pamięcią.
+1. **SmolLM2-360M-Instruct** (GGUF Q4_K_M) — ultra-lekki (~230 MB), uruchamiany na każdym smartfonie.
+2. **Qwen2.5-0.5B-Instruct** (GGUF Q4_K_M) — zbalansowany model mobilny (~350 MB).
+3. **Qwen2.5-1.5B-Instruct** (GGUF Q4_K_M) — wysoka dokładność techniczna i język polski (~980 MB).
+4. **Whisper Tiny (ONNX)** — szybkie rozpoznawanie mowy (~75 MB).
+5. **Piper TTS (ONNX)** — natychmiastowa synteza mowy w języku polskim (~28 MB).
 
-To shortlist, a nie ostateczna decyzja. Przed użyciem trzeba sprawdzić licencję, wymagania i jakość języka polskiego.
+## Format i środowisko uruchomieniowe
 
-## Format i uruchamianie
+- Format modeli: **GGUF** (Q4_K_M) oraz **ONNX**.
+- Środowisko: `llama-cpp-python` / `llama.cpp` oraz `piper-tts` / `onnxruntime`.
+- Architektura: adapter `LocalLLMEngine` oraz `SpeechService` izolowane za interfejsami, nieblokujące wątku UI.
 
-Preferowany format modelu:
+## Pamięć i profile urządzeń
 
-```text
-GGUF + kwantyzacja Q4_K_M lub podobna
-```
-
-Kierunek implementacji:
-
-- Android: natywny runtime wspierający Android/ARM64, np. llama.cpp lub MLC-LLM,
-- Windows/Linux: llama.cpp, llama-cpp-python lub podobny runtime,
-- Python/Kivy: adapter `LocalDiagnosticAI`, który komunikuje się z runtime bez blokowania UI.
-
-Nie zakładamy, że `llama-cpp-python` będzie łatwo kompilować się bezpośrednio w każdym APK. Runtime powinien być izolowany za interfejsem, aby można go było zmienić bez przebudowy logiki diagnostycznej.
-
-## Pamięć i tryby urządzeń
-
-| Tryb | Model | Zastosowanie |
+| Profil | Model | Zastosowanie |
 |---|---|---|
-| Android Lite | 1B–1.5B, Q4 | krótkie objaśnienia DTC, pytania użytkownika |
-| Android Standard | 1.5B–3B, Q4 | analiza kontekstu i prosty dialog |
-| Laptop | 3B–7B, Q4/Q5 | dłuższe raporty i analiza historii |
-| Fallback | brak LLM | reguły, baza DTC i szablony odpowiedzi |
-
-Model nie musi analizować surowego strumienia w każdej próbce. Telemetria powinna być agregowana lokalnie do cech, np. średnia, minimum, maksimum, trend i zdarzenia.
-
-## Prywatność
-
-- dane OBD pozostają na urządzeniu,
-- historia diagnostyki jest lokalna w SQLite,
-- logi nie zawierają VIN ani pełnych danych pojazdu bez zgody,
-- aktualizacja modelu jest ręczna lub podpisana,
-- aplikacja działa bez internetu,
-- użytkownik może usunąć model i całą historię.
+| **Android Lite** | 135M–360M, Q4 | Podstawowe wyjaśnienia DTC na starszych telefonach |
+| **Android Standard** | 0.5B–1.5B, Q4 | Analiza kontekstu telemetrii i dialog techniczny |
+| **Desktop / Laptop** | 1.5B–3B, Q4 | Pełne raporty diagnostyczne i asystent |
+| **Fallback** | brak LLM | Silnik regułowy `RuleBasedDiagnosticAI` (zawsze dostępny) |
 
 ## Wymagania akceptacyjne
 
-- [x] Aplikacja wykonuje podstawową analizę bez internetu (`RuleBasedDiagnosticAI`).
-- [x] Fallback reguł działa bez zainstalowanego LLM.
-- [x] Zaimplementowano interfejs `LocalLLMEngine` i runner modeli GGUF / mock.
-- [x] Zintegrowano modele mowy offline (`SpeechService`, STT Whisper/Vosk, TTS Piper).
-- [x] Zbudowano asystenta głosowego `VoiceDiagnosticAssistant` z blokadą kasowania błędów głosem.
-- [x] Model nie przedstawia hipotezy jako pewnej diagnozy (wymuszony disclaimer).
+- [x] Podstawowa analiza i triage działają całkowicie offline (`RuleBasedDiagnosticAI`).
+- [x] Fallback regułowy działa niezawodnie w przypadku braku zainstalowanego LLM.
+- [x] Zaimplementowano interfejs `LocalLLMEngine` z obsługą runnera GGUF i mocków testowych.
+- [x] Zintegrowano moduły mowy offline (`SpeechService`, STT Whisper/Vosk, TTS Piper).
+- [x] Wdrożono asystenta głosowego `VoiceDiagnosticAssistant` z blokadą kasowania błędów głosem.
+- [x] Każda odpowiedź modelu zawiera obligatoryjną klauzulę o pomocniczym charakterze diagnozy.
 - [x] Model nie generuje komend zapisu/kodowania ECU.
-- [x] Triage krytycznych przypadków wykonują reguły, nie sam LLM.
-- [ ] Test benchmarkowy zawiera minimum 100 przypadków DTC.
-- [ ] Zmierzono czas odpowiedzi, RAM, temperaturę i baterię na urządzeniu mobilnym.
-- [ ] APK działa na minimum dwóch urządzeniach ARM64.
-- [ ] Model jest dystrybuowany osobno lub jako opcjonalny pakiet, aby nie powiększać podstawowego APK.
+- [x] Deterministyczne reguły fizyczne (temperatura, ładowanie) nadrzędnie wyznaczają stan krytyczny.
+- [x] Zintegrowano pulpit mobilny Kivy z obsługą asystenta głosowego i telemetrii.
+- [ ] Test benchmarkowy na zestawie 100 rzeczywistych zamrożonych ramek DTC.
+- [ ] Pomiary czasu inferencji, zużycia RAM i baterii na urządzeniu ARM64.
+- [ ] Paczkowanie wag modeli jako opcjonalnego zasobu pobieranego na żądanie.
 
 ## Zrealizowana architektura
 
-Zaimplementowano architekturę warstwową:
-
 ```text
-RuleBasedDiagnosticAI    # silnik regułowy (zawsze dostępny)
+RuleBasedDiagnosticAI    # silnik regułowy (zawsze dostępny, gwarancja braku halucynacji)
 LocalDiagnosticAI        # adapter lokalnego modelu AI
 LocalLLMEngine           # obsługa kompaktowych modeli GGUF (SmolLM2-360M, Qwen2.5-0.5B/1.5B)
 SpeechService            # obsługa mowy STT (Whisper/Vosk) oraz TTS (Piper)
 VoiceDiagnosticAssistant # bezdotykowy asystent kierowcy
+DashboardController      # kontroler integrujący telemetrię, raporty AI i asystenta z UI
 ```

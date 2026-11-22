@@ -13,7 +13,7 @@
 1. Pobierz aktualny kod: `git fetch origin`.
 2. Zaktualizuj gałąź bazową względem `origin/development`.
 3. Uruchom lokalną bramkę weryfikacyjną:
-   `PYTHONPATH=. python -m pytest --cov=core --cov=services --cov-report=term-missing --cov-fail-under=80`.
+   `PYTHONPATH=. python -m pytest --cov=core --cov=services --cov=ui --cov-report=term-missing --cov-fail-under=80`.
 4. Zweryfikuj format i jakość zmienionych plików.
 5. Do repozytorium dołączaj wyłącznie pliki źródłowe; sekrety, tokeny, środowiska lokalne i artefakty builda izoluj w `.gitignore`.
 
@@ -57,8 +57,9 @@ Warunkiem zatwierdzenia i scalenia PR jest zielony status wszystkich checków CI
 
 - Testy jednostkowe realizuj w pełnej izolacji od sprzętu fizycznego, z użyciem mocków i fake connections.
 - Każdy moduł pokrywaj testami ścieżki pozytywnej oraz obsługi błędów i stanów brzegowych.
-- Utrzymuj pokrycie kodu testami na minimalnym poziomie 80% dla modułów `core` i `services`.
-- Dla kodu UI oraz integracji sprzętowej przygotuj procedurę testów integracyjnych/manualnych.
+- Utrzymuj pokrycie kodu testami na minimalnym poziomie 80% dla modułów `core`, `services` oraz `ui`.
+- Kod interfejsu UI opieraj na kontrolerze (`DashboardController`), aby testy działały bez serwera graficznego.
+- Dla integracji sprzętowej przygotuj procedurę testów manualnych.
 
 ## 6. Status checks w CI
 
@@ -72,7 +73,15 @@ W przypadku braku automatycznego uruchomienia CI ponów workflow lub zgłoś pro
 
 ## 7. Bezpieczeństwo pojazdu i danych
 
-- Kasowanie błędów DTC wykonuj wyłącznie po manualnym potwierdzeniu przez użytkownika na postoju i uprzednim utrwaleniu kodów w logu sesji.
+- Kasowanie błędów DTC wykonuj wyłącznie po manualnym potwierdzeniu przez użytkownika na postoju (`speed == 0`) i uprzednim utrwaleniu kodów w logu sesji.
 - Wszystkie analizy AI oznaczaj jako hipotezy pomocnicze wymagające weryfikacji warsztatowej.
 - W logach, telemetrii i zgłoszeniach chroń prywatność: maskuj numery VIN, dane personalne oraz klucze dostępowe.
 - Niestandardowe parametry PID poddawaj ścisłej walidacji pod kątem typu odpowiedzi, dozwolonego zakresu wartości i trybu ECU.
+
+## 8. Wskaźniki kontekstu (Dokumentacja modułowa)
+
+Przed modyfikacją konkretnego podsystemu skonsultuj dedykowaną specyfikację w katalogu `docs/`:
+
+- [`docs/diagnostic_ai.md`](docs/diagnostic_ai.md) — silnik diagnostyczny, reguły triage'u i deterministyczne fallbacki.
+- [`docs/ai_models.md`](docs/ai_models.md) — specyfikacja modeli LLM (GGUF) oraz modeli mowy (Whisper/Piper).
+- [`docs/ui_dashboard.md`](docs/ui_dashboard.md) — architektura DashboardController, pulpit telemetrii i protokół kasowania DTC.
