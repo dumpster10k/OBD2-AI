@@ -41,6 +41,16 @@ from services.telemetry_metrics import (
     evaluate_metric_status,
     value_to_gauge_angle,
 )
+from services.actuator_testing import (
+    ActuatorCatalog,
+    ActuatorProtocol,
+    ActuatorSafetyPreflight,
+    ActuatorTestCategory,
+    ActuatorTestDefinition,
+    ActuatorTestResult,
+    ActuatorTestRunner,
+    ActuatorTestStatus,
+)
 
 __all__ = [
     "AIEngine",
@@ -79,4 +89,12 @@ __all__ = [
     "calculate_series_stats",
     "value_to_gauge_angle",
     "evaluate_metric_status",
+    "ActuatorProtocol",
+    "ActuatorTestCategory",
+    "ActuatorTestStatus",
+    "ActuatorTestDefinition",
+    "ActuatorTestResult",
+    "ActuatorSafetyPreflight",
+    "ActuatorCatalog",
+    "ActuatorTestRunner",
 ]
