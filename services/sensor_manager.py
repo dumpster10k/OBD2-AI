@@ -28,6 +28,10 @@ class SensorDefinition:
     max_value: Optional[float] = None
     description: str = ""
     ecu_target: str = "7E0"
+    vendor: str = "Standard"
+    category: str = "engine"
+    standard: str = "SAE_J1979"
+    short_name: str = ""
 
 
 class SensorManager:
@@ -38,56 +42,39 @@ class SensorManager:
 
     @classmethod
     def with_defaults(cls) -> SensorManager:
-        """Fabryka inicjalizująca menedżera z bazą popularnych sensorów niestandardowych (UDS Mode 22)."""
+        """Fabryka inicjalizująca menedżera z pełną bazą sensorów standardowych OBD-II oraz VAG."""
+        return cls.with_full_database()
+
+    @classmethod
+    def with_standard_obd2(cls) -> SensorManager:
+        """Fabryka inicjalizująca wyłącznie czujniki standardowe SAE J1979 Mode 01."""
+        from services.sensor_database import get_standard_obd2_sensors
+
         manager = cls()
-        manager.add_sensor(
-            SensorDefinition(
-                name="Engine Oil Temp",
-                mode="22",
-                pid="1126",
-                formula="(A*256 + B)/10",
-                unit="°C",
-                min_value=-40,
-                max_value=160,
-                description="Temperatura oleju silnikowego (UDS Mode 22)",
-            )
-        )
-        manager.add_sensor(
-            SensorDefinition(
-                name="Boost Pressure",
-                mode="22",
-                pid="1155",
-                formula="(A*256 + B)*0.01",
-                unit="bar",
-                min_value=0.0,
-                max_value=3.5,
-                description="Rzeczywiste ciśnienie doładowania turbosprężarki",
-            )
-        )
-        manager.add_sensor(
-            SensorDefinition(
-                name="Transmission Fluid Temp",
-                mode="22",
-                pid="1E50",
-                formula="A - 40",
-                unit="°C",
-                min_value=-40,
-                max_value=150,
-                description="Temperatura oleju w automatycznej skrzyni biegów",
-            )
-        )
-        manager.add_sensor(
-            SensorDefinition(
-                name="DPF Soot Mass",
-                mode="22",
-                pid="2010",
-                formula="(A*256 + B)*0.01",
-                unit="g",
-                min_value=0.0,
-                max_value=80.0,
-                description="Masa sadzy w filtrze cząstek stałych (DPF)",
-            )
-        )
+        for sensor in get_standard_obd2_sensors():
+            manager.add_sensor(sensor)
+        return manager
+
+    @classmethod
+    def with_vag_sensors(cls) -> SensorManager:
+        """Fabryka inicjalizująca wyłącznie czujniki specyficzne dla pojazdów VAG (KWP1281 / UDS)."""
+        from services.sensor_database import get_vag_sensors
+
+        manager = cls()
+        for sensor in get_vag_sensors():
+            manager.add_sensor(sensor)
+        return manager
+
+    @classmethod
+    def with_full_database(cls) -> SensorManager:
+        """Fabryka inicjalizująca bazę standardową OBD-II oraz dedykowaną dla grupy VAG."""
+        from services.sensor_database import get_standard_obd2_sensors, get_vag_sensors
+
+        manager = cls()
+        for sensor in get_standard_obd2_sensors():
+            manager.add_sensor(sensor)
+        for sensor in get_vag_sensors():
+            manager.add_sensor(sensor)
         return manager
 
     def add_sensor(self, sensor: SensorDefinition) -> None:
@@ -98,8 +85,56 @@ class SensorManager:
     def get_sensor(self, sensor_name: str) -> Optional[SensorDefinition]:
         return self.sensors.get(sensor_name)
 
+    def get_by_pid(self, pid: str, mode: Optional[str] = None) -> Optional[SensorDefinition]:
+        """Wyszukuje sensor po identyfikatorze PID (oraz opcjonalnie trybie Mode)."""
+        pid_norm = pid.upper().strip()
+        mode_norm = mode.upper().strip() if mode else None
+
+        for sensor in self.sensors.values():
+            if sensor.pid.upper() == pid_norm:
+                if mode_norm is None or sensor.mode.upper() == mode_norm:
+                    return sensor
+        return None
+
+    def get_by_short_name(self, short_name: str) -> Optional[SensorDefinition]:
+        """Wyszukuje sensor po skróconej nazwie technicznej (np. 'RPM', 'ECT', 'VAG_EOT')."""
+        sn_norm = short_name.upper().strip()
+        for sensor in self.sensors.values():
+            if sensor.short_name and sensor.short_name.upper() == sn_norm:
+                return sensor
+        return None
+
+    def find_sensors(
+        self,
+        vendor: Optional[str] = None,
+        category: Optional[str] = None,
+        standard: Optional[str] = None,
+        mode: Optional[str] = None,
+    ) -> list[SensorDefinition]:
+        """Filtruje zarejestrowane sensory według kryteriów producenta, kategorii lub standardu."""
+        results: list[SensorDefinition] = []
+        for sensor in self.sensors.values():
+            if vendor and sensor.vendor.lower() != vendor.lower():
+                continue
+            if category and sensor.category.lower() != category.lower():
+                continue
+            if standard and sensor.standard.lower() != standard.lower():
+                continue
+            if mode and sensor.mode.lower() != mode.lower():
+                continue
+            results.append(sensor)
+        return results
+
     def list_sensors(self) -> list[SensorDefinition]:
         return list(self.sensors.values())
+
+    def list_vendors(self) -> list[str]:
+        """Zwraca unikalną listę producentów reprezentowanych w bazie sensorów."""
+        return sorted({s.vendor for s in self.sensors.values()})
+
+    def list_categories(self) -> list[str]:
+        """Zwraca unikalną listę kategorii parametrów."""
+        return sorted({s.category for s in self.sensors.values()})
 
     def validate_value(self, sensor_name: str, value: float) -> bool:
         sensor = self.sensors.get(sensor_name)

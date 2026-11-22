@@ -32,6 +32,7 @@ from services.llm_engine import (
     LocalLLMEngine,
     MockLLMBackend,
 )
+from services.sensor_database import get_standard_obd2_sensors, get_vag_sensors
 from services.sensor_manager import SensorDefinition, SensorManager
 from services.speech_service import (
     RECOMMENDED_SPEECH_MODELS,
@@ -62,6 +63,8 @@ __all__ = [
     "RuleBasedDiagnosticAI",
     "SensorDefinition",
     "SensorManager",
+    "get_standard_obd2_sensors",
+    "get_vag_sensors",
     "LLMModelSpec",
     "RECOMMENDED_LLM_MODELS",
     "LLMBackend",
