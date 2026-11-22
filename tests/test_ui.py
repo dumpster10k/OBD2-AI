@@ -831,3 +831,29 @@ def test_agent_mode_and_harvesting_controls():
     # Generowanie raportu z trasy
     ui.on_generate_post_trip_report()
     assert "PODSUMOWANIE" in ui.report_summary_label.text or "Brak" in ui.report_summary_label.text
+
+
+def test_dashboard_controller_knowledge_base_methods():
+    controller = DashboardController()
+
+    # Wyjaśnienie lokalizacji czujnika
+    exp = controller.explain_sensor_location("boost_pressure")
+    assert "G31" in exp
+    assert "Grupa 115" in exp
+
+    # Pobranie procedury diagnostycznej
+    proc = controller.get_diagnostic_procedure("P0299")
+    assert proc is not None
+    assert "Niedładowanie" in proc.title
+
+    # Wyszukanie kodu nieznanego bez zgody
+    import uuid
+
+    code_unknown = f"P98{uuid.uuid4().hex[:4].upper()}"
+    res_no_consent = controller.lookup_dtc_knowledge(code_unknown, allow_web=False)
+    assert res_no_consent.status.value == "needs_user_confirmation"
+    assert "zezwala" in res_no_consent.confirmation_prompt.lower()
+
+    # Wyszukanie z potwierdzeniem użytkownika
+    res_with_consent = controller.lookup_dtc_knowledge(code_unknown, allow_web=True)
+    assert res_with_consent.status.value == "found_online"
