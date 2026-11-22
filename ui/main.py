@@ -95,7 +95,16 @@ except ImportError:
 from core.obd_client import ConnectionConfig, OBDClient
 from services.ai_engine import AIEngine
 from services.diagnostic_ai import DiagnosisReport
-from services.llm_engine import DISCLAIMER_TEXT
+from services.llm_engine import (
+    DISCLAIMER_TEXT,
+    LLMModelSpec,
+    RECOMMENDED_LLM_MODELS,
+)
+from services.speech_service import (
+    SpeechModelSpec,
+    RECOMMENDED_SPEECH_MODELS,
+    SpeechService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -446,6 +455,18 @@ class DashboardController:
         self.dtc_clear_pending: bool = False
         self.session_log: list[dict[str, Any]] = []
 
+        # Konfiguracja modelu AI
+        self.available_models: list[LLMModelSpec] = list(RECOMMENDED_LLM_MODELS.values())
+        self.current_model_spec: Optional[LLMModelSpec] = self.available_models[0] if self.available_models else None
+        self.model_backend_status: str = "Dostępny (Mock)"
+
+        # Konfiguracja mowy (STT/TTS)
+        self.available_stt_models: list[SpeechModelSpec] = []
+        self.available_tts_models: list[SpeechModelSpec] = []
+        self.current_stt_model_spec: Optional[SpeechModelSpec] = None
+        self.current_tts_model_spec: Optional[SpeechModelSpec] = None
+        self.mic_enabled: bool = True
+
         # Moduł konfiguracji połączeń (Mobile BT / Laptop USB & BT)
         self.connection_config: dict[str, Any] = {
             "profile_key": "mobile_bt",
@@ -707,6 +728,44 @@ class DashboardController:
         """Obsługuje szybkie predefiniowane polecenie asystenta głosowego."""
         return self.handle_voice_input(text_query=cmd_prompt)
 
+    # ---------------------------------------------------------------------
+    # Model AI configuration
+    # ---------------------------------------------------------------------
+    def load_available_models(self) -> None:
+        """Pobiera listę dostępnych modeli LLM."""
+        self.available_models = list(RECOMMENDED_LLM_MODELS.values())
+
+    def on_model_select(self, model_spec: LLMModelSpec) -> None:
+        """Obsługa wybrania modelu LLM."""
+        self.current_model_spec = model_spec
+        self.model_backend_status = "Dostępny (Mock)"
+        logger.info(f"Wybrano model: {model_spec.name}")
+
+    # ---------------------------------------------------------------------
+    # Speech models configuration
+    # ---------------------------------------------------------------------
+    def load_available_speech_models(self) -> None:
+        """Pobiera listę dostępnych modeli mowy."""
+        self.available_stt_models = [m for m in RECOMMENDED_SPEECH_MODELS.values() if m.type == "stt"]
+        self.available_tts_models = [m for m in RECOMMENDED_SPEECH_MODELS.values() if m.type == "tts"]
+        self.current_stt_model_spec = self.available_stt_models[0] if self.available_stt_models else None
+        self.current_tts_model_spec = self.available_tts_models[0] if self.available_tts_models else None
+
+    def on_stt_model_select(self, model_spec: SpeechModelSpec) -> None:
+        """Obsługa wybrania modelu STT."""
+        self.current_stt_model_spec = model_spec
+        logger.info(f"Wybrano model STT: {model_spec.name}")
+
+    def on_tts_model_select(self, model_spec: SpeechModelSpec) -> None:
+        """Obsługa wybrania modelu TTS."""
+        self.current_tts_model_spec = model_spec
+        logger.info(f"Wybrano model TTS: {model_spec.name}")
+
+    def toggle_mic_enabled(self, enabled: bool) -> None:
+        """Przełącza stan mikrofonu."""
+        self.mic_enabled = enabled
+        logger.info(f"Mikrofon: {'WŁĄCZONY' if enabled else 'WYŁĄCZONY'}")
+
 
 class CarDoctorUI(BoxLayout):
     """Nowoczesny pulpit mobilny Kivy z telemetrią na żywo, wykresem trendu, symulatorem i ustawieniami połączeń."""
@@ -714,6 +773,7 @@ class CarDoctorUI(BoxLayout):
     def __init__(self, controller: Optional[DashboardController] = None, **kwargs):
         super().__init__(orientation="vertical", **kwargs)
         self.controller = controller or DashboardController()
+        self.controller.load_available_speech_models()  # Inicjalizacja modeli mowy
 
         if KIVY_AVAILABLE:
             try:
@@ -761,7 +821,50 @@ class CarDoctorUI(BoxLayout):
         self.content_box.add_widget(header_card)
 
         # ---------------------------------------------------------------------
-        # 2. Pulpit telemetrii na żywo (Siatka 2x2 kart parametrów)
+        # 2. Panel selektora modeli mowy (STT/TTS)
+        # ---------------------------------------------------------------------
+        speech_selector_box = BoxLayout(orientation="vertical", size_hint_y=None, height=140, spacing=5)
+        self.speech_status_label = Label(
+            text="🎙️ STT: Nie wybrano | 🗣️ TTS: Nie wybrano | Mikrofon: ON",
+            size_hint_y=None,
+            height=28,
+            font_size=12,
+            bold=True,
+        )
+        speech_selector_box.add_widget(self.speech_status_label)
+
+        # Grid dla STT i TTS
+        self.speech_grid = GridLayout(cols=2, spacing=5, size_hint_y=None)
+        self.speech_grid.cols = 2  # Dwie kolumny: STT po lewej, TTS po prawej
+        self.speech_grid.spacing_y = 5
+
+        self._create_speech_model_cards()
+        speech_selector_box.add_widget(self.speech_grid)
+        self.content_box.add_widget(speech_selector_box)
+
+        # ---------------------------------------------------------------------
+        # 3. Panel selektora modeli AI
+        # ---------------------------------------------------------------------
+        model_selector_box = BoxLayout(orientation="vertical", size_hint_y=None, height=160, spacing=5)
+        self.model_status_label = Label(
+            text="🤖 Model AI: Nie wybrano",
+            size_hint_y=None,
+            height=30,
+            font_size=14,
+            bold=True,
+        )
+        model_selector_box.add_widget(self.model_status_label)
+
+        self.models_grid = GridLayout(cols=2, spacing=5, size_hint_y=None)
+        self.models_grid.cols = 1  # Jedna kolumna na małych ekranach
+        self.models_grid.spacing_y = 5
+
+        self._create_model_cards()
+        model_selector_box.add_widget(self.models_grid)
+        self.content_box.add_widget(model_selector_box)
+
+        # ---------------------------------------------------------------------
+        # 4. Pulpit telemetrii na żywo (Siatka 2x2 kart parametrów)
         # ---------------------------------------------------------------------
         telemetry_container = StyledCard(
             orientation="vertical",
@@ -769,17 +872,6 @@ class CarDoctorUI(BoxLayout):
             height=240,
             padding=[14, 14, 14, 14],
             spacing=10,
-        )
-
-        telemetry_title = Label(
-            text="📊 TELEMETRIA NA ŻYWO (OBD-II)",
-            font_size="13sp",
-            bold=True,
-            size_hint_y=None,
-            height=20,
-            color=COLOR_TEXT_MUTED,
-        )
-        telemetry_container.add_widget(telemetry_title)
 
         self.grid_telemetry = GridLayout(cols=2, spacing=10, size_hint_y=None, height=135)
 
@@ -1204,6 +1296,67 @@ class CarDoctorUI(BoxLayout):
 
         self.voice_card.add_widget(quick_grid)
 
+        # Etykiety statusu i odpowiedzi asystenta
+        self.voice_status_label = Label(
+            text="Gotowy (naciśnij nagrywanie lub wybierz szybką komendę)",
+            font_size="11sp",
+            size_hint_y=None,
+            height=20,
+            halign="left",
+            color=COLOR_TEXT_MUTED,
+        )
+        self.voice_card.add_widget(self.voice_status_label)
+
+        self.voice_response_label = Label(
+            text="Wybierz polecenie powyżej, aby usłyszeć odpowiedź asystenta mowy.",
+            font_size="10sp",
+            size_hint_y=None,
+            height=16,
+            halign="left",
+            valign="top",
+            color=(0.88, 0.90, 0.94, 1.0),
+        )
+        self.voice_card.add_widget(self.voice_response_label)
+
+        # Wiersz sterowania asystentem
+        voice_live_row = BoxLayout(size_hint_y=None, height=36, spacing=8)
+
+        self.voice_custom_input = TextInput(
+            text="",
+            multiline=False,
+            font_size="11sp",
+            size_hint_x=0.55,
+            background_color=(0.10, 0.14, 0.20, 1.0),
+            foreground_color=(1.0, 1.0, 1.0, 1.0),
+        )
+        voice_live_row.add_widget(self.voice_custom_input)
+
+        self.btn_voice_send = Button(
+            text="Zapytaj",
+            font_size="12sp",
+            bold=True,
+            size_hint_x=0.20,
+            background_normal="",
+            background_color=COLOR_PRIMARY,
+        )
+        self.btn_voice_send.bind(on_press=self.on_send_custom_voice_query)
+        voice_live_row.add_widget(self.btn_voice_send)
+        self.voice_card.add_widget(voice_live_row)
+
+        self.voice_card.add_widget(self.voice_response_label)
+        self.content_box.add_widget(self.voice_card)
+        self.btn_cmd_help = Button(
+            text="❓ Pomoc",
+            font_size="11sp",
+            bold=True,
+            background_normal="",
+            background_color=(0.20, 0.22, 0.32, 1.0),
+        )
+        self.btn_cmd_help.bind(on_press=lambda _b: self.on_quick_voice_command("Pomoc - jakie komendy mogę wydać?"))
+        quick_grid.add_widget(self.btn_cmd_help)
+
+        self.voice_card.add_widget(quick_grid)
+
         # Wiersz interakcji na żywo
         voice_live_row = BoxLayout(orientation="horizontal", spacing=6, size_hint_y=None, height=36)
 
@@ -1319,6 +1472,122 @@ class CarDoctorUI(BoxLayout):
         # Inicjalne odświeżenie danych telemetrii
         self.update_telemetry_ui()
 
+        # Przycisk włącz/wyłącz mikrofon
+        self.mic_btn = Button(
+            text="🎤 Mikrofon: ON",
+            size_hint_y=None,
+            height=40,
+            font_size=12,
+            bold=True,
+            color=0x00FF00 if self.controller.mic_enabled else 0xFF0000,
+        )
+        self.mic_btn.bind(on_press=self.on_toggle_mic)
+        self.add_widget(self.mic_btn)
+        card.add_widget(spec_label)
+        card.add_widget(desc_label)
+
+        # Przycisk wyboru
+        btn = Button(
+            text=f"Wybierz {model_type}",
+            size_hint_y=None,
+            height=28,
+            font_size=10,
+        )
+        btn.bind(on_press=self._on_speech_card_press)
+        btn.user_data = (model, model_type)
+        card.add_widget(btn)
+
+        return card
+
+    def _on_speech_card_press(self, _btn: Button) -> None:
+        """Obsługa kliknięcia w kartę modelu mowy."""
+        model, model_type = _btn.user_data
+        if model_type == "STT":
+            self.controller.on_stt_model_select(model)
+            self.speech_status_label.text = f"🎙️ STT: {model.name} | 🗣️ TTS: {self.controller.current_tts_model_spec.name if self.controller.current_tts_model_spec else 'Nie wybrano'} | Mikrofon: {'ON' if self.controller.mic_enabled else 'OFF'}"
+        else:
+            self.controller.on_tts_model_select(model)
+            self.speech_status_label.text = f"🎙️ STT: {self.controller.current_stt_model_spec.name if self.controller.current_stt_model_spec else 'Nie wybrano'} | 🗣️ TTS: {model.name} | Mikrofon: {'ON' if self.controller.mic_enabled else 'OFF'}"
+
+    def _create_model_cards(self) -> None:
+        """Tworzy karty dla każdego dostępnego modelu LLM."""
+        for model in self.controller.available_models:
+            # Karta modelu
+            model_card = BoxLayout(orientation="vertical", size_hint_y=None, height=80, spacing=3)
+
+            # Nazwa modelu
+            model_name_label = Label(
+                text=model.name,
+                size_hint_y=None,
+                height=24,
+                font_size=13,
+                bold=True,
+            )
+
+            # Specyfikacja (rozmiar, RAM)
+            spec_label = Label(
+                text=f"📦 {model.size_mb} MB | 💾 {model.ram_required_mb} MB RAM",
+                size_hint_y=None,
+                height=18,
+                font_size=11,
+            )
+
+            # Rekomendacja
+            rec_label = Label(
+                text=self._get_recommendation_text(model),
+                size_hint_y=None,
+                height=16,
+                font_size=10,
+                color=1,  # Jasny kolor dla kontrastu
+            )
+
+            model_card.add_widget(model_name_label)
+            model_card.add_widget(spec_label)
+            model_card.add_widget(rec_label)
+
+            # Przycisk wyboru
+            select_btn = Button(
+                text="Wybierz",
+                size_hint_y=None,
+                height=30,
+                font_size=11,
+            )
+            select_btn.bind(on_press=self._on_model_card_press)
+            select_btn.user_data = model  # Przechowujemy obiekt modelu
+            model_card.add_widget(select_btn)
+
+            self.models_grid.add_widget(model_card)
+
+    def _get_recommendation_text(self, model: LLMModelSpec) -> str:
+        """Zwraca tekst rekomendacji dla modelu."""
+        rec = model.recommended_for
+        if rec == "mobile_ultra_light":
+            return "🚀 Dla starszych telefonów"
+        elif rec == "mobile_standard":
+            return "⭐ Zalecany domyślny"
+        elif rec == "mobile_high_end":
+            return "🏆 Najlepszy polski"
+        return rec
+
+    def _on_model_card_press(self, _btn: Button) -> None:
+        """Obsługa kliknięcia w kartę modelu."""
+        model = _btn.user_data
+        if model:
+            self.controller.on_model_select(model)
+            self.model_status_label.text = f"🤖 Model AI: {model.name}"
+            self.model_status_label.color = 0x00FF00  # Zielony
+        else:
+            self.model_status_label.text = f"🤖 Model AI: Nie wybrano"
+            self.model_status_label.color = 1  # Szary
+
+    def on_toggle_mic(self, _btn: Button) -> None:
+        """Obsługa przycisku włącz/wyłącz mikrofon."""
+        self.controller.toggle_mic_enabled(not self.controller.mic_enabled)
+        new_text = "🎤 Mikrofon: ON" if self.controller.mic_enabled else "🎤 Mikrofon: OFF"
+        new_color = 0x00FF00 if self.controller.mic_enabled else 0xFF0000
+        self.mic_btn.text = new_text
+        self.mic_btn.color = new_color
+
     def update_telemetry_ui(self) -> None:
         t = self.controller.telemetry
         self.rpm_label.text = f"Obroty: {t.get('rpm', 0)} RPM"
@@ -1421,6 +1690,16 @@ class CarDoctorUI(BoxLayout):
         self.status_label.text = f"Załadowano scenariusz: {scen['name']}"
         self.update_telemetry_ui()
         self.on_scan_errors()
+
+    def on_model_select_action(self, _btn: Button) -> None:
+        """Obsługa przycisku wybrania modelu."""
+        if self.controller.current_model_spec:
+            self.controller.on_model_select(self.controller.current_model_spec)
+            self.model_status_label.text = f"🤖 Model AI: {self.controller.current_model_spec.name}"
+            self.model_status_label.color = 0x00FF00  # Zielony
+        else:
+            self.model_status_label.text = f"🤖 Model AI: Nie wybrano"
+            self.model_status_label.color = 1  # Szary
 
     def on_refresh_telemetry(self, _btn=None) -> None:
         self.controller.refresh_telemetry()
