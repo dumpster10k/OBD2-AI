@@ -90,4 +90,6 @@ Przed modyfikacją konkretnego podsystemu skonsultuj dedykowaną specyfikację w
 
 - [`.agents/skills/obd2-sensor-authoring/SKILL.md`](.agents/skills/obd2-sensor-authoring/SKILL.md) — definiowanie nowych czujników i PID-ów w SensorManager, formuły obliczeniowe i walidacja zakresów.
 - [`.agents/skills/obd2-ecu-log-interpreter/SKILL.md`](.agents/skills/obd2-ecu-log-interpreter/SKILL.md) — interpretacja zrzutów logów z ECU/ELM327, dekodowanie kodów usterek DTC i negatywnych odpowiedzi NRC.
+- [`.agents/skills/obd2-sensor-charts-gauges/SKILL.md`](.agents/skills/obd2-sensor-charts-gauges/SKILL.md) — projektowanie wskaźników zegarowych (dial gauges), wykresów trendu, obliczanie średnich i optymalnych progów pracy silnika.
+- [`.agents/skills/obd2-actuator-output-tests/SKILL.md`](.agents/skills/obd2-actuator-output-tests/SKILL.md) — testowanie podzespołów wykonawczych (Output Tests / Basic Settings: N80, N75, klapki nawiewu Climatronic V70/V68/V71/V85 w Audi A4 B6 / VAG, pompa paliwa, wentylatory), blokady bezpieczeństwa i procedury kalibracji.
 
