@@ -189,7 +189,11 @@ class ECUIdentifier:
 
         # 2. VAG 1.9 TDI / 2.0 TDI PD (Bosch EDC16U1 / EDC16U34)
         # Przykłady: 03G906016, 03G906021
-        if "EDC16" in raw_norm or "03G906016" in raw_norm or "03G906021" in raw_norm:
+        if (
+            ("EDC16" in raw_norm and "3.0" not in raw_norm and "CP" not in raw_norm)
+            or "03G906016" in raw_norm
+            or "03G906021" in raw_norm
+        ):
             has_dpf = "BLS" in raw_norm or "BMM" in raw_norm or "DPF" in raw_norm
             return {
                 "vendor": "VAG",
@@ -319,6 +323,106 @@ class ECUIdentifier:
                 "recommended_protocol": "UDS_2F",
             }
 
+        # 11. VAG 2.0 TFSI EA113 (Bosch MED9.1)
+        # Golf 5 GTI, Leon Cupra, Audi S3 8P, Audi A4 B7 (AXX, BWA, BWE, BUL, CDL, BHZ, BYD)
+        if (
+            "MED9.1" in raw_norm
+            or "1K0907115" in raw_norm
+            or "8P0907115" in raw_norm
+            or "8E0907115" in raw_norm
+            or any(c in raw_norm for c in ["BWA", "AXX", "BWE", "BUL", "CDL", "BHZ", "BYD"])
+        ):
+            return {
+                "vendor": "VAG",
+                "engine_code": "2.0 TFSI EA113",
+                "engine_name": "2.0 TFSI EA113 (Pasek + pasek/łańcuszek wałków, HPFP szklanka)",
+                "fuel_type": "petrol",
+                "has_turbo": True,
+                "has_dpf": False,
+                "ecu_family": "MED9.1",
+                "recommended_protocol": "KWP2000",
+            }
+
+        # 12. VAG 2.0 TSI / TFSI EA888 Gen 1/2/3 (Bosch MED17.5 / Continental Simos 18)
+        # Golf 6/7 GTI/R, Octavia RS, Leon Cupra 5F, Audi A4 B8 (CAEB, CCZA, CHHA, CHHB, CJXC, CJXG, DKTB)
+        if (
+            "06J906026" in raw_norm
+            or "06J906027" in raw_norm
+            or "5G0906259" in raw_norm
+            or "8K2907115" in raw_norm
+            or "SIMOS18" in raw_norm
+            or any(c in raw_norm for c in ["CAEB", "CCZA", "CHHA", "CHHB", "CJXC", "CJXG", "DKTB", "EA888"])
+        ):
+            return {
+                "vendor": "VAG",
+                "engine_code": "2.0 TSI EA888",
+                "engine_name": "2.0 TSI / TFSI EA888 (Łańcuch rozrządu, MPI+FSI w Gen3)",
+                "fuel_type": "petrol",
+                "has_turbo": True,
+                "has_dpf": False,
+                "ecu_family": "Simos18" if "SIMOS" in raw_norm or "5G0906259" in raw_norm else "MED17.5",
+                "recommended_protocol": "UDS_2F",
+            }
+
+        # 13. VAG 3.0 TDI V6 Common Rail (Bosch EDC16CP34 / EDC17CP14 / EDC17CP44 / MD1)
+        # Audi A4/A6/A8/Q7, Touareg (ASB, BKN, BMK, CAPA, CCWA, CDUC, CKVB, CRTC)
+        if (
+            "4F0907401" in raw_norm
+            or "4F0910401" in raw_norm
+            or "8K0907401" in raw_norm
+            or "4G0907401" in raw_norm
+            or "EDC16CP34" in raw_norm
+            or "EDC17CP44" in raw_norm
+            or any(c in raw_norm for c in ["3.0TDI", "CAPA", "CCWA", "CDUC", "ASB", "BKN", "BMK", "CRTC"])
+        ):
+            return {
+                "vendor": "VAG",
+                "engine_code": "3.0 TDI V6 CR",
+                "engine_name": "3.0 V6 TDI Common Rail (204-272 KM, piezo / klapy wirowe)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "EDC17CP44" if "4G0" in raw_norm or "CDUC" in raw_norm else "EDC16CP34",
+                "recommended_protocol": "UDS_2F" if "4G0" in raw_norm or "8K0" in raw_norm else "KWP2000",
+            }
+
+        # 14. VAG VR6 3.2 / 3.6 FSI (Bosch ME7.1.1 / MED9.1)
+        # Golf R32, Passat B6/CC 3.6, Audi TT 3.2, Touareg VR6 (BDB, BMJ, BUB, BWS, AXZ)
+        if (
+            "022906032" in raw_norm
+            or "03H906032" in raw_norm
+            or any(c in raw_norm for c in ["VR6", "R32", "BUB", "BWS", "BMJ", "BDB", "AXZ"])
+        ):
+            return {
+                "vendor": "VAG",
+                "engine_code": "VR6 3.2/3.6",
+                "engine_name": "VR6 3.2 / 3.6 FSI 24V (Kanały 208/209 fazy rozrządu)",
+                "fuel_type": "petrol",
+                "has_turbo": False,
+                "has_dpf": False,
+                "ecu_family": "ME7.1.1",
+                "recommended_protocol": "KWP1281",
+            }
+
+        # 15. VAG 4.2 V8 MPI / FSI (Bosch ME7.1.1 / MED9.1.1)
+        # Audi S4 B6/B7 (BBK), Audi S5 4.2 (CAUA), Audi A8 4.2 (BFM, BVJ)
+        if (
+            "8E0907559" in raw_norm
+            or "4E0910560" in raw_norm
+            or "079907560" in raw_norm
+            or any(c in raw_norm for c in ["4.2V8", "BBK", "CAUA", "BFM", "BVJ", "BAS"])
+        ):
+            return {
+                "vendor": "VAG",
+                "engine_code": "4.2 V8",
+                "engine_name": "4.2 V8 40V / FSI 32V (Dwa przepływomierze Bank 1/2)",
+                "fuel_type": "petrol",
+                "has_turbo": False,
+                "has_dpf": False,
+                "ecu_family": "ME7.1.1",
+                "recommended_protocol": "KWP2000",
+            }
+
         # Domyślny fallback: Uniwersalny sterownik OBD-II
         return {
             "vendor": "Standard",
@@ -390,19 +494,41 @@ class VehicleProfiler:
                         "Control Module Voltage",
                     ]
                 )
-        # VAG silniki benzynowe wolnossące (1.6 MPI 8V)
+        # VAG silniki benzynowe wolnossące (1.6 MPI 8V, VR6, 4.2 V8)
         elif not has_turbo and vendor == "VAG":
-            active_sensors.extend(
-                [
-                    "Intake Manifold Absolute Pressure",
-                    "Throttle Position",
-                    "VAG Lambda Additive Idle",
-                    "VAG Lambda Multiplicative Partial",
-                    "VAG Coolant Temp G62",
-                    "Control Module Voltage",
-                ]
-            )
-        # Silniki benzynowe turbodoładowane (1.8T 20V, 1.2 TSI, 1.4 TSI, 2.0 TSI)
+            if "VR6" in engine_code:
+                active_sensors.extend(
+                    [
+                        "Camshaft Phase Bank 1 (Ch 208)",
+                        "Camshaft Phase Bank 2 (Ch 209)",
+                        "Engine Oil Temp",
+                        "Intake Manifold Absolute Pressure",
+                        "Throttle Position",
+                        "Control Module Voltage",
+                    ]
+                )
+            elif "4.2" in engine_code:
+                active_sensors.extend(
+                    [
+                        "MAF Air Flow Rate Bank 1",
+                        "MAF Air Flow Rate Bank 2",
+                        "Engine Oil Temp",
+                        "Throttle Position",
+                        "Control Module Voltage",
+                    ]
+                )
+            else:
+                active_sensors.extend(
+                    [
+                        "Intake Manifold Absolute Pressure",
+                        "Throttle Position",
+                        "VAG Lambda Additive Idle",
+                        "VAG Lambda Multiplicative Partial",
+                        "VAG Coolant Temp G62",
+                        "Control Module Voltage",
+                    ]
+                )
+        # Silniki benzynowe turbodoładowane (1.8T 20V, 1.2 TSI, 1.4 TSI, 2.0 TFSI, 2.0 TSI)
         elif has_turbo and vendor == "VAG":
             if ecu_family == "ME7.5":
                 active_sensors.extend(
@@ -417,6 +543,18 @@ class VehicleProfiler:
                         "VAG Lambda Additive Idle",
                         "VAG Coolant Temp G62",
                         "Control Module Voltage",
+                    ]
+                )
+            elif "2.0" in engine_code:
+                active_sensors.extend(
+                    [
+                        "Boost Pressure",
+                        "Boost Pressure Specified",
+                        "Fuel Rail High Pressure Actual",
+                        "Fuel Rail Low Pressure Actual",
+                        "Engine Oil Temp",
+                        "Control Module Voltage",
+                        "MAF Air Flow Rate",
                     ]
                 )
             else:

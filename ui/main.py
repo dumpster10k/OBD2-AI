@@ -105,6 +105,11 @@ from services.actuator_testing import (
 from services.agent_advisor import AgentAdvisor
 from services.ai_engine import AIEngine
 from services.diagnostic_ai import DiagnosisReport
+from services.diagnostic_knowledge_base import (
+    DiagnosticKnowledgeBase,
+    DiagnosticLookupResult,
+    DiagnosticProcedure,
+)
 from services.llm_engine import (
     DISCLAIMER_TEXT,
     RECOMMENDED_LLM_MODELS,
@@ -520,6 +525,7 @@ class DashboardController:
         self.sensor_manager: SensorManager = SensorManager.with_full_database()
         self.vehicle_profile: VehicleProfile = VehicleProfiler.detect_profile()
         self.preferences_mgr: UserPreferencesManager = UserPreferencesManager()
+        self.knowledge_base: DiagnosticKnowledgeBase = DiagnosticKnowledgeBase()
         self.agent_advisor: AgentAdvisor = AgentAdvisor(
             llm_engine=getattr(self.ai, "llm_engine", None),
             preferences_manager=self.preferences_mgr,
@@ -743,6 +749,31 @@ class DashboardController:
             "device_name": "Brak",
             "message": "Serwis mowy niedostępny",
         }
+
+    def explain_sensor_location(self, sensor_name_or_code: str) -> str:
+        """Zwraca opis gdzie fizycznie pod maską oraz w jakich grupach pomiarowych szukać danego czujnika."""
+        return self.knowledge_base.explain_sensor_location(sensor_name_or_code)
+
+    def lookup_dtc_knowledge(self, code: str, allow_web: bool = False) -> DiagnosticLookupResult:
+        """Wyszukuje szczegółowe biuletyny diagnostyczne i procedury naprawcze dla zadanego kodu DTC.
+
+        Jeśli kod nie istnieje w lokalnej bazie, generuje zapytanie o zgodę użytkownika na przeszukanie WWW.
+        """
+        ctx = {
+            "vin": self.vehicle_profile.vin,
+            "engine_code": self.vehicle_profile.engine_code,
+            "brand": self.vehicle_profile.brand,
+        }
+        return self.knowledge_base.lookup_dtc(code, vehicle_context=ctx, allow_web_search=allow_web)
+
+    def get_diagnostic_procedure(self, code_or_id: str) -> Optional[DiagnosticProcedure]:
+        """Zwraca gotowy schemat procedury krok po kroku powiązany z usterką."""
+        from services.diagnostic_knowledge_base import DiagnosticProcedureRegistry
+
+        proc = DiagnosticProcedureRegistry.get_procedure(code_or_id)
+        if not proc:
+            proc = DiagnosticProcedureRegistry.find_by_dtc(code_or_id)
+        return proc
 
     def request_clear_dtc(self) -> dict[str, Any]:
         """Inicjuje procedurę kasowania błędów DTC pod warunkiem postoju pojazdu (wymóg AGENTS.md)."""

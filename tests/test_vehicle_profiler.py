@@ -167,3 +167,41 @@ def test_dashboard_controller_vehicle_profiling_integration():
     assert isinstance(prof, VehicleProfile)
     assert "1.9 TDI" in prof.engine_name
     assert controller.vehicle_profile == prof
+
+
+def test_ecu_identifier_vag_expanded_engines():
+    # 2.0 TFSI EA113 (BWA / MED9.1)
+    tfsi_ea113 = ECUIdentifier.identify("1K0907115 BWA MED9.1")
+    assert "2.0 TFSI EA113" in tfsi_ea113["engine_code"]
+    assert tfsi_ea113["has_turbo"] is True
+    assert tfsi_ea113["fuel_type"] == "petrol"
+
+    # 2.0 TSI EA888 (CHHA Simos18)
+    tsi_ea888 = ECUIdentifier.identify("5G0906259 CHHA Simos18 EA888")
+    assert "2.0 TSI EA888" in tsi_ea888["engine_code"]
+    assert tsi_ea888["has_turbo"] is True
+
+    # 3.0 TDI V6 CR (ASB / EDC16CP34 / CDUC)
+    tdi_v6 = ECUIdentifier.identify("4F0907401 ASB 3.0TDI EDC16CP34")
+    assert "3.0 TDI V6" in tdi_v6["engine_code"]
+    assert tdi_v6["has_dpf"] is True
+    assert tdi_v6["fuel_type"] == "diesel"
+
+    # VR6 3.2 (BUB ME7.1.1)
+    vr6 = ECUIdentifier.identify("022906032 BUB R32 VR6")
+    assert "VR6" in vr6["engine_code"]
+    assert vr6["has_turbo"] is False
+
+    # 4.2 V8 (BBK S4)
+    v8 = ECUIdentifier.identify("8E0907559 BBK 4.2V8")
+    assert "4.2 V8" in v8["engine_code"]
+    assert v8["has_turbo"] is False
+
+
+def test_vehicle_profiler_expanded_sensor_sets():
+    p_tfsi = VehicleProfiler.detect_profile(vin="WAUZZZ8P15A123456", ecu_id="8P0907115 BWA")
+    assert "Fuel Rail High Pressure Actual" in p_tfsi.active_sensor_names
+    assert "Fuel Rail Low Pressure Actual" in p_tfsi.active_sensor_names
+
+    p_vr6 = VehicleProfiler.detect_profile(vin="WVWZZZ1KZ8W123456", ecu_id="BUB VR6")
+    assert "Camshaft Phase Bank 1 (Ch 208)" in p_vr6.active_sensor_names

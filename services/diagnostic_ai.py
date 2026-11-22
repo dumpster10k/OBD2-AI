@@ -344,6 +344,8 @@ STANDARD_DTC_DATABASE: dict[str, dict[str, Any]] = {
     },
 }
 
+DTC_KNOWLEDGE_BASE = STANDARD_DTC_DATABASE
+
 
 class RuleBasedDiagnosticAI(DiagnosticAI):
     """Deterministyczny silnik diagnostyczny oparty na regułach bezpieczeństwa i bazie DTC.
@@ -351,8 +353,13 @@ class RuleBasedDiagnosticAI(DiagnosticAI):
     Gwarantuje działanie offline, brak halucynacji i absolutny priorytet bezpieczeństwa pojazdu.
     """
 
-    def __init__(self, dtc_database: Optional[dict[str, dict[str, Any]]] = None):
+    def __init__(
+        self,
+        dtc_database: Optional[dict[str, dict[str, Any]]] = None,
+        knowledge_base: Optional[Any] = None,
+    ):
         self.db = dtc_database if dtc_database is not None else STANDARD_DTC_DATABASE
+        self.knowledge_base = knowledge_base
 
     def analyze(self, vehicle_context: dict[str, Any]) -> DiagnosisReport:
         dtc_list: list[str] = vehicle_context.get("dtc_codes", [])
@@ -445,15 +452,48 @@ class RuleBasedDiagnosticAI(DiagnosticAI):
     def _evaluate_dtc(self, code: str, context: dict[str, Any]) -> DTCFinding:
         entry = self.db.get(code)
         if entry:
+            actions = list(entry.get("actions", []))
+            try:
+                from services.diagnostic_knowledge_base import DiagnosticProcedureRegistry
+
+                proc = DiagnosticProcedureRegistry.find_by_dtc(code)
+                if proc:
+                    for st in proc.steps:
+                        actions.append(f"Krok {st.step_number} ({st.title}): {st.description}")
+            except Exception:
+                pass
+
             return DTCFinding(
                 code=code,
                 title=entry["title"],
                 description=entry["description"],
                 urgency=entry["urgency"],
                 possible_causes=list(entry.get("causes", [])),
-                recommended_actions=list(entry.get("actions", [])),
+                recommended_actions=actions,
                 freeze_frame_notes=f"Zweryfikuj warunki wystąpienia dla {code}",
             )
+
+        # Sprawdzenie bazy wiedzy / procedur dla nieznanego w STANDARD_DTC kodu
+        try:
+            from services.diagnostic_knowledge_base import DiagnosticKnowledgeBase
+
+            kb = self.knowledge_base or DiagnosticKnowledgeBase()
+            res = kb.lookup_dtc(code, vehicle_context=context, allow_web_search=False)
+            actions = ["Zapisz parametry pracy silnika i sprawdź biuletyny TSB"]
+            if res.diagnostic_procedure:
+                for st in res.diagnostic_procedure.steps:
+                    actions.append(f"Krok {st.step_number} ({st.title}): {st.description}")
+            return DTCFinding(
+                code=code,
+                title=res.title,
+                description=res.description,
+                urgency="info",
+                possible_causes=res.possible_causes,
+                recommended_actions=actions,
+                freeze_frame_notes=res.confirmation_prompt or "Odczytaj pełną ramkę zamrożoną",
+            )
+        except Exception:
+            pass
 
         # Fallback dla nieznanego kodu DTC
         category = "Układ napędowy (Powertrain)" if code.startswith("P") else "Sterownik pojazdu"
