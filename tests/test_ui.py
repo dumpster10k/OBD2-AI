@@ -236,8 +236,46 @@ def test_car_doctor_ui_widget_tree_and_callbacks():
     assert "Odpowiedź asystenta głosowego" in ui.report_summary_label.text
 
 
-def test_ai_doctor_app_build_and_run():
+def test_ai_doctor_app_build_and_run(monkeypatch):
     app = AIDoctorApp()
     widget = app.build()
     assert isinstance(widget, CarDoctorUI)
+    monkeypatch.setattr(app, "run", lambda: None)
     app.run()
+def test_car_doctor_ui_telemetry_warning_and_critical_colors():
+    fake_conn = FakeOBDConnection(
+        dtc=[],
+        rpm=1500,
+        speed=0,
+        coolant=108,  # Warning
+        voltage=11.2,  # Low voltage warning
+    )
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    ui.on_refresh_telemetry()
+    assert tuple(ui.coolant_label.color) == (0.96, 0.62, 0.14, 1.0)
+    assert tuple(ui.voltage_label.color) == (0.96, 0.62, 0.14, 1.0)
+
+    # Coolant critical >= 115
+    fake_conn.coolant = 120
+    ui.on_refresh_telemetry()
+    assert tuple(ui.coolant_label.color) == (0.88, 0.11, 0.28, 1.0)
+
+
+def test_car_doctor_ui_critical_urgency_badge():
+    # P0600 - magistrala CAN lub wysokie obroty + misfire
+    fake_conn = FakeOBDConnection(
+        dtc=["P0600"],
+        rpm=3500,
+        speed=0,
+        coolant=90,
+    )
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    ui.on_scan_errors()
+    assert "CRITICAL" in ui.urgency_badge.text
+    assert tuple(ui.urgency_badge.color) == (0.88, 0.11, 0.28, 1.0)
