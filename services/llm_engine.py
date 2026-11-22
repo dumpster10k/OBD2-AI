@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
+import os
+import urllib.error
+import urllib.request
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -59,6 +63,17 @@ RECOMMENDED_LLM_MODELS: dict[str, LLMModelSpec] = {
         context_window=4096,
         recommended_for="mobile_high_end",
         description="Rekomendowany model główny dla standardowych smartfonów. Znakomity język polski.",
+    ),
+    "qwen3.5-9b-mtp": LLMModelSpec(
+        model_id="qwen3.5-9b-mtp",
+        name="Qwen 3.5 9B MTP (LM Studio)",
+        size_mb=5800,
+        ram_required_mb=8192,
+        format="gguf",
+        quantization="Q4_K_M",
+        context_window=32768,
+        recommended_for="desktop_lm_studio",
+        description="Zaawansowany model 9B z predykcją wielo-tokenową (MTP), hostowany w LM Studio.",
     ),
 }
 
@@ -163,6 +178,108 @@ class LlamaCppBackend(LLMBackend):
         return text
 
 
+class OpenAICompatibleBackend(LLMBackend):
+    """Adapter dla lokalnych serwerów LLM zgodnych z API OpenAI (LM Studio, vLLM, Ollama, llama-server)."""
+
+    def __init__(
+        self,
+        endpoint: str = "http://localhost:1234/v1",
+        model_name: str = "qwen3.5-9b-mtp",
+        timeout: float = 15.0,
+    ):
+        self.endpoint = endpoint.rstrip("/")
+        self.model_name = model_name
+        self.timeout = timeout
+
+    def is_available(self) -> bool:
+        """Sprawdza dostępność serwera wykonując szybkie zapytanie GET /models."""
+        try:
+            req = urllib.request.Request(f"{self.endpoint}/models", method="GET")
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                if resp.status == 200:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return "data" in data or "models" in data
+        except Exception:
+            return False
+        return False
+
+    def generate(self, prompt: str, max_tokens: int = 300, temperature: float = 0.2) -> str:
+        """Przesyła prompt do serwera przez Chat Completions API."""
+        url = f"{self.endpoint}/chat/completions"
+        payload = {
+            "model": self.model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                choices = data.get("choices", [])
+                if not choices:
+                    raise RuntimeError("Brak wygenerowanych odpowiedzi z serwera LLM.")
+                msg = choices[0].get("message", {})
+                text = msg.get("content") or ""
+                # W przypadku modeli myślących (Qwen/DeepSeek), gdy content jest pusty z powodu długiego myślenia
+                if not text.strip() and "reasoning_content" in msg:
+                    text = msg.get("reasoning_content", "").strip()
+
+                text = text.strip()
+                if DISCLAIMER_TEXT not in text:
+                    text = f"{text}\n\n{DISCLAIMER_TEXT}"
+                return text
+        except Exception as e:
+            raise RuntimeError(f"Błąd komunikacji z serwerem LLM ({self.endpoint}): {e}") from e
+
+
+class LMStudioBackend(OpenAICompatibleBackend):
+    """Specjalizowany backend dla LM Studio z automatyczną detekcją hosta w WSL2 i localhost."""
+
+    DEFAULT_CANDIDATES = [
+        "http://172.31.208.1:1234/v1",  # Brama WSL2
+        "http://localhost:1234/v1",
+        "http://127.0.0.1:1234/v1",
+    ]
+
+    def __init__(
+        self,
+        endpoint: Optional[str] = None,
+        model_name: str = "qwen3.5-9b-mtp",
+        timeout: float = 20.0,
+    ):
+        target_endpoint = endpoint or os.environ.get("LM_STUDIO_URL")
+        if not target_endpoint:
+            target_endpoint = self._detect_best_endpoint()
+
+        super().__init__(endpoint=target_endpoint, model_name=model_name, timeout=timeout)
+
+    @classmethod
+    def _detect_best_endpoint(cls) -> str:
+        """Skanuje znane adresy nasłuchu LM Studio i wybiera pierwszy aktywny."""
+        candidates = list(cls.DEFAULT_CANDIDATES)
+        env_url = os.environ.get("LM_STUDIO_URL")
+        if env_url:
+            candidates.insert(0, env_url)
+
+        for ep in candidates:
+            try:
+                req = urllib.request.Request(f"{ep.rstrip('/')}/models", method="GET")
+                with urllib.request.urlopen(req, timeout=1.0) as resp:
+                    if resp.status == 200:
+                        return ep
+            except Exception:
+                continue
+        return "http://localhost:1234/v1"
+
+
 class LocalLLMEngine:
     """Główny silnik zarządzający małym lokalnym modelem AI."""
 
@@ -180,6 +297,15 @@ class LocalLLMEngine:
     def list_available_models(cls) -> list[LLMModelSpec]:
         """Zwraca listę rekomendowanych modeli wbudowanych/obsługiwanych."""
         return list(RECOMMENDED_LLM_MODELS.values())
+
+    @classmethod
+    def create_auto_engine(cls, preferred_model_id: str = "qwen3.5-9b-mtp") -> LocalLLMEngine:
+        """Automatycznie tworzy silnik LLM próbując najpierw podłączyć działające LM Studio."""
+        lm_backend = LMStudioBackend(model_name=preferred_model_id)
+        if lm_backend.is_available():
+            spec = RECOMMENDED_LLM_MODELS.get(preferred_model_id) or RECOMMENDED_LLM_MODELS["qwen3.5-9b-mtp"]
+            return cls(model_spec=spec, backend=lm_backend)
+        return cls()
 
     def set_backend(self, backend: LLMBackend) -> None:
         self.backend = backend

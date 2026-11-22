@@ -618,7 +618,7 @@ def test_dashboard_controller_model_configuration():
     assert isinstance(controller.current_model_spec, LLMModelSpec)
 
     # Sprawdzenie statusu backendu
-    assert controller.model_backend_status == "Dostępny (Mock)"
+    assert "Dostępny (Mock)" in controller.model_backend_status or "LM Studio" in controller.model_backend_status
 
 
 def test_dashboard_controller_on_model_select():
@@ -800,3 +800,34 @@ def test_microphone_status_and_auto_freeze_frame_recording():
     assert hasattr(ui, "voice_status_label")
     ui.on_voice_record_button()
     assert "niedostępny" in ui.voice_status_label.text.lower() or "rozpoznano" in ui.voice_status_label.text.lower()
+
+
+def test_agent_mode_and_harvesting_controls():
+    fake_conn = FakeOBDConnection(dtc=[], speed=0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    assert hasattr(ui, "btn_agent_mode")
+    assert hasattr(ui, "btn_post_trip_report")
+
+    # Przełączanie trybu agenta
+    initial_mode = controller.get_agent_mode()
+    ui.on_toggle_agent_mode()
+    new_mode = controller.get_agent_mode()
+    assert new_mode != initial_mode
+
+    # Uruchomienie próbkowania i odbiór próbki
+    controller.start_telemetry_harvesting()
+    assert controller.telemetry_harvester.is_running is True
+
+    # Obsługa próbki
+    controller._on_harvester_sample({"rpm": 900, "speed": 10, "coolant_temp": 85, "voltage": 14.1})
+    assert controller.telemetry["rpm"] == 900
+
+    controller.stop_telemetry_harvesting()
+    assert controller.telemetry_harvester.is_running is False
+
+    # Generowanie raportu z trasy
+    ui.on_generate_post_trip_report()
+    assert "PODSUMOWANIE" in ui.report_summary_label.text or "Brak" in ui.report_summary_label.text

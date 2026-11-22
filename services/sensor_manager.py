@@ -128,6 +128,10 @@ class SensorManager:
     def list_sensors(self) -> list[SensorDefinition]:
         return list(self.sensors.values())
 
+    def get_active_sensors(self) -> list[SensorDefinition]:
+        """Zwraca listę wszystkich zarejestrowanych czujników."""
+        return self.list_sensors()
+
     def list_vendors(self) -> list[str]:
         """Zwraca unikalną listę producentów reprezentowanych w bazie sensorów."""
         return sorted({s.vendor for s in self.sensors.values()})
