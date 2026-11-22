@@ -105,6 +105,7 @@ from services.speech_service import (
     RECOMMENDED_SPEECH_MODELS,
     SpeechService,
 )
+from services.telemetry_logger import TelemetryLogger
 
 logger = logging.getLogger(__name__)
 
@@ -437,9 +438,13 @@ class DashboardController:
         self,
         obd_client: Optional[OBDClient] = None,
         ai_engine: Optional[AIEngine] = None,
+        telemetry_logger: Optional[TelemetryLogger] = None,
     ):
         self.obd = obd_client or OBDClient()
         self.ai = ai_engine or AIEngine()
+        self.telemetry_logger = telemetry_logger or TelemetryLogger()
+        self.is_logging: bool = False
+        self.current_session_id: Optional[str] = None
         self.telemetry: dict[str, Any] = {
             "rpm": 0,
             "speed": 0,
@@ -588,6 +593,11 @@ class DashboardController:
             self.telemetry = self.obd.get_telemetry()
 
         self.record_telemetry_point(self.telemetry)
+
+        # Automatyczny zapis próbki do bazy SQLite, jeśli trwa nagrywanie sesji
+        if self.is_logging and self.current_session_id and self.telemetry_logger:
+            self.telemetry_logger.log_sample(self.current_session_id, self.telemetry)
+
         return self.telemetry
 
     def scan_dtc_and_diagnose(self) -> tuple[list[Any], Optional[DiagnosisReport]]:
@@ -660,6 +670,13 @@ class DashboardController:
                 "telemetry": dict(self.telemetry),
             }
         )
+        if self.telemetry_logger and self.current_session_id:
+            self.telemetry_logger.log_audit_event(
+                session_id=self.current_session_id,
+                event_type="DTC_CLEARED",
+                details=f"Kasowanie kodów DTC: {list(self.current_dtcs)} na postoju",
+                speed=0.0,
+            )
 
         if self.simulation_mode:
             self.simulated_dtc = []
@@ -684,6 +701,52 @@ class DashboardController:
     def cancel_clear_dtc(self) -> None:
         """Anuluje oczekujące potwierdzenie kasowania."""
         self.dtc_clear_pending = False
+
+    def start_telemetry_logging(self, vehicle_name: str = "Pojazd") -> str:
+        """Rozpoczyna rejestrację próbek telemetrii w bazie SQLite."""
+        initial_dtcs = [
+            str(c[0] if isinstance(c, (list, tuple)) else c)
+            for c in self.current_dtcs
+        ]
+        self.current_session_id = self.telemetry_logger.start_session(
+            vehicle_name=vehicle_name,
+            initial_dtcs=initial_dtcs,
+        )
+        self.is_logging = True
+        return self.current_session_id
+
+    def stop_telemetry_logging(self) -> None:
+        """Zatrzymuje rejestrację telemetrii."""
+        if self.current_session_id:
+            final_dtcs = [
+                str(c[0] if isinstance(c, (list, tuple)) else c)
+                for c in self.current_dtcs
+            ]
+            self.telemetry_logger.end_session(self.current_session_id, final_dtcs=final_dtcs)
+        self.is_logging = False
+        self.current_session_id = None
+
+    def export_telemetry_csv(self, output_path: Optional[str] = None) -> dict[str, Any]:
+        """Eksportuje próbki telemetrii z aktywnej lub ostatniej sesji do pliku CSV."""
+        sess_id = self.current_session_id
+        if not sess_id:
+            sessions = self.telemetry_logger.list_sessions()
+            if sessions:
+                sess_id = sessions[0]["session_id"]
+        if not sess_id:
+            return {"success": False, "message": "Brak zarejestrowanych sesji do eksportu."}
+
+        out = output_path or f"data/telemetry_{sess_id}.csv"
+        try:
+            path = self.telemetry_logger.export_to_csv(sess_id, out)
+            return {
+                "success": True,
+                "message": f"Wyeksportowano pomyślnie do pliku {path.name}",
+                "path": str(path),
+                "session_id": sess_id,
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Błąd eksportu: {e}"}
 
     def handle_voice_input(
         self,
@@ -1418,12 +1481,12 @@ class CarDoctorUI(BoxLayout):
         self.content_box.add_widget(self.voice_card)
 
         # ---------------------------------------------------------------------
-        # 7. Panel akcji (Skanowanie, Asystent głosowy, Dwuetapowe kasowanie)
+        # 7. Panel akcji (Skanowanie, Asystent głosowy, Dwuetapowe kasowanie, Rejestrator)
         # ---------------------------------------------------------------------
         actions_card = StyledCard(
             orientation="vertical",
             size_hint_y=None,
-            height=180,
+            height=234,
             padding=[16, 14, 16, 14],
             spacing=10,
         )
@@ -1451,6 +1514,32 @@ class CarDoctorUI(BoxLayout):
         )
         self.voice_btn.bind(on_press=self.on_voice_assistant)
         actions_card.add_widget(self.voice_btn)
+
+        # Rząd rejestratora trasy (SQLite) i eksportu CSV
+        logging_row = BoxLayout(orientation="horizontal", spacing=8, size_hint_y=None, height=44)
+
+        self.btn_toggle_logging = Button(
+            text="⏺️ Rejestruj trasę: WYŁ",
+            font_size="13sp",
+            bold=True,
+            size_hint_x=0.55,
+            background_normal="",
+            background_color=(0.18, 0.22, 0.30, 1.0),
+        )
+        self.btn_toggle_logging.bind(on_press=self.on_toggle_logging)
+        logging_row.add_widget(self.btn_toggle_logging)
+
+        self.btn_export_csv = Button(
+            text="💾 Eksportuj CSV",
+            font_size="13sp",
+            bold=True,
+            size_hint_x=0.45,
+            background_normal="",
+            background_color=(0.14, 0.28, 0.22, 1.0),
+        )
+        self.btn_export_csv.bind(on_press=self.on_export_csv)
+        logging_row.add_widget(self.btn_export_csv)
+        actions_card.add_widget(logging_row)
 
         self.clear_btn = Button(
             text="🗑️ Skasuj kody błędów DTC",
@@ -1806,6 +1895,24 @@ class CarDoctorUI(BoxLayout):
         self.report_summary_label.text = (
             f"Odpowiedź asystenta głosowego:\n{answer}\n\n{DISCLAIMER_TEXT}"
         )
+
+    def on_toggle_logging(self, _btn=None) -> None:
+        """Włącza lub wyłącza nagrywanie próbek telemetrii do bazy SQLite."""
+        if not self.controller.is_logging:
+            sess_id = self.controller.start_telemetry_logging()
+            self.btn_toggle_logging.text = "🔴 Rejestrowanie WŁ"
+            self.btn_toggle_logging.background_color = COLOR_DANGER
+            self.status_label.text = f"Rozpoczęto rejestrację trasy ({sess_id})"
+        else:
+            self.controller.stop_telemetry_logging()
+            self.btn_toggle_logging.text = "⏺️ Rejestruj trasę: WYŁ"
+            self.btn_toggle_logging.background_color = (0.18, 0.22, 0.30, 1.0)
+            self.status_label.text = "Zatrzymano rejestrację telemetrii"
+
+    def on_export_csv(self, _btn=None) -> None:
+        """Eksportuje zarejestrowaną sesję telemetrii do pliku CSV."""
+        res = self.controller.export_telemetry_csv()
+        self.status_label.text = res["message"]
 
 
 class AIDoctorApp(App):

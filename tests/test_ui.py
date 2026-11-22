@@ -115,6 +115,21 @@ def test_car_doctor_ui_telemetry_color_indication():
     assert ui2.voltage_label.color[1] > ui2.voltage_label.color[0]  # Yellow has higher green component
 
 
+def test_car_doctor_ui_telemetry_logging_controls():
+    fake_conn = FakeOBDConnection(dtc=[], rpm=1200, speed=30, coolant=85, voltage=14.0)
+    client = OBDClient(connection=fake_conn)
+    controller = DashboardController(obd_client=client)
+    ui = CarDoctorUI(controller=controller)
+
+    # Weryfikacja kontrolek logowania telemetrii
+    assert hasattr(ui, "btn_toggle_logging")
+    assert hasattr(ui, "log_file_label")
+
+    # Przełączenie logowania
+    ui.on_toggle_logging(ui.btn_toggle_logging)
+    assert controller.telemetry_logger.is_active()
+
+
 def test_car_doctor_ui_mic_toggle():
     """Testuje przełączanie mikrofonu w UI."""
     fake_conn = FakeOBDConnection(dtc=[], speed=0)
@@ -179,3 +194,23 @@ def test_car_doctor_ui_model_selection():
     assert "Model AI:" in ui.model_status_label.text
     assert controller.current_model_spec is not None
     assert controller.model_backend_status == "Dostępny (Mock)"
+    assert hasattr(ui, "btn_export_csv")
+
+    # Start nagrywania
+    ui.on_toggle_logging()
+    assert controller.is_logging is True
+    assert "🔴 Rejestrowanie WŁ" in ui.btn_toggle_logging.text
+    assert "Rozpoczęto rejestrację" in ui.status_label.text
+
+    # Pobranie próbki w trakcie nagrywania
+    controller.refresh_telemetry()
+
+    # Eksport CSV
+    ui.on_export_csv()
+    assert "Wyeksportowano" in ui.status_label.text
+
+    # Zatrzymanie nagrywania
+    ui.on_toggle_logging()
+    assert controller.is_logging is False
+    assert "WYŁ" in ui.btn_toggle_logging.text
+    assert "Zatrzymano rejestrację" in ui.status_label.text
