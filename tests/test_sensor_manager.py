@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+
 from services.sensor_manager import SensorDefinition, SensorManager
 
 

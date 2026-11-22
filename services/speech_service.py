@@ -8,14 +8,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from services.diagnostic_ai import (
+    STANDARD_DTC_DATABASE,
     DiagnosticAI,
     RuleBasedDiagnosticAI,
-    STANDARD_DTC_DATABASE,
 )
-from services.llm_engine import DISCLAIMER_TEXT, LocalLLMEngine
+from services.llm_engine import LocalLLMEngine
 
 logger = logging.getLogger(__name__)
 
@@ -295,7 +295,10 @@ class VoiceDiagnosticAssistant:
         q = query.lower().strip()
 
         # 1. Bezwzględna ochrona: próba kasowania błędów głosem
-        if any(term in q for term in ["skasuj", "wyczyść", "usuń błąd", "kasuj błędy", "resetuj błędy", "skasować", "kasowani"]):
+        if any(
+            term in q
+            for term in ["skasuj", "wyczyść", "usuń błąd", "kasuj błędy", "resetuj błędy", "skasować", "kasowani"]
+        ):
             return (VoiceIntent.CLEAR_DTC, {})
 
         # 2. Pomoc i lista komend
@@ -363,7 +366,9 @@ class VoiceDiagnosticAssistant:
         elif intent == VoiceIntent.COOLANT_TEMP:
             temp = context.get("coolant_temp", 0)
             if temp >= 115:
-                response_text = f"Krytyczna temperatura cieczy chłodzącej: {temp}°C! Natychmiast zatrzymaj pojazd i wyłącz silnik."
+                response_text = (
+                    f"Krytyczna temperatura cieczy chłodzącej: {temp}°C! Natychmiast zatrzymaj pojazd i wyłącz silnik."
+                )
             elif temp >= 105:
                 response_text = f"Podwyższona temperatura cieczy chłodzącej: {temp}°C. Zredukuj obciążenie silnika i obserwuj wskaźnik."
             elif temp <= 0:
@@ -377,7 +382,9 @@ class VoiceDiagnosticAssistant:
             elif voltage > 15.0:
                 response_text = f"Zbyt wysokie napięcie: {voltage:.1f} V. Ryzyko przeładowania akumulatora i uszkodzenia elektroniki."
             elif voltage >= 11.8:
-                response_text = f"Napięcie instalacji wynosi {voltage:.1f} V. Ładowanie i stan akumulatora są prawidłowe."
+                response_text = (
+                    f"Napięcie instalacji wynosi {voltage:.1f} V. Ładowanie i stan akumulatora są prawidłowe."
+                )
             else:
                 response_text = "Brak odczytu napięcia z adaptera OBD-II."
         elif intent == VoiceIntent.SPEED_RPM:
@@ -391,15 +398,21 @@ class VoiceDiagnosticAssistant:
                 action_text = f" Zalecany krok: {entry['actions'][0]}." if entry.get("actions") else ""
                 response_text = f"Kod {code}: {entry['title']}. {entry['description']}{action_text}"
             else:
-                response_text = self.llm.ask(f"Wyjaśnij krótko kod błędu {code}", vehicle_context=context, max_tokens=120)
+                response_text = self.llm.ask(
+                    f"Wyjaśnij krótko kod błędu {code}", vehicle_context=context, max_tokens=120
+                )
         elif intent == VoiceIntent.DTC_STATUS:
             dtc_codes = context.get("dtc_codes", [])
             if not dtc_codes:
-                response_text = "Brak zarejestrowanych błędów w sterowniku silnika. Wszystkie układy działają poprawnie."
+                response_text = (
+                    "Brak zarejestrowanych błędów w sterowniku silnika. Wszystkie układy działają poprawnie."
+                )
             else:
                 report = self.diagnostic.analyze(context)
                 step = f" Pierwszy krok: {report.next_steps[0]}." if report.next_steps else ""
-                response_text = f"Wykryto kody błędów {', '.join(dtc_codes)}. Raport diagnostyczny: {report.summary}.{step}"
+                response_text = (
+                    f"Wykryto kody błędów {', '.join(dtc_codes)}. Raport diagnostyczny: {report.summary}.{step}"
+                )
         elif intent == VoiceIntent.SAFE_TO_DRIVE:
             report = self.diagnostic.analyze(context)
             if not report.safe_to_drive:

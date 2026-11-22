@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import ast
 import operator
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Optional, Sequence
+from typing import Optional
 
 _SAFE_OPS = {
     ast.Add: operator.add,

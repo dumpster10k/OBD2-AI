@@ -4,10 +4,11 @@ import csv
 import json
 import sqlite3
 import uuid
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Generator, Optional
+from typing import Any, Optional
 
 
 def mask_vin(vin: str) -> str:
@@ -116,11 +117,7 @@ class TelemetryLogger:
         coolant = float(sample.get("coolant_temp", 0))
         voltage = float(sample.get("voltage", 0.0))
 
-        extra = {
-            k: v
-            for k, v in sample.items()
-            if k not in ["rpm", "speed", "coolant_temp", "voltage"]
-        }
+        extra = {k: v for k, v in sample.items() if k not in ["rpm", "speed", "coolant_temp", "voltage"]}
         extra_json = json.dumps(extra) if extra else "{}"
 
         with self._connection() as conn:
@@ -209,7 +206,7 @@ class TelemetryLogger:
             cursor = conn.cursor()
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as sample_count,
                     AVG(rpm) as avg_rpm,
                     MAX(rpm) as max_rpm,

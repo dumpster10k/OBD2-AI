@@ -109,6 +109,7 @@ def test_get_telemetry_with_failing_queries():
 
 def test_connection_config_dataclass():
     from core.obd_client import ConnectionConfig
+
     cfg = ConnectionConfig()
     assert cfg.connection_type == "auto"
     assert cfg.port is None

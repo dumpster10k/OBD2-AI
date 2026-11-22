@@ -1,6 +1,5 @@
 import time
 from unittest.mock import MagicMock
-import pytest
 
 from services.actuator_testing import (
     ActuatorCatalog,
@@ -8,7 +7,6 @@ from services.actuator_testing import (
     ActuatorSafetyPreflight,
     ActuatorTestCategory,
     ActuatorTestDefinition,
-    ActuatorTestResult,
     ActuatorTestRunner,
     ActuatorTestStatus,
 )

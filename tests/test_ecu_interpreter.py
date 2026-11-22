@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import pytest
 from services.ecu_interpreter import (
-    decode_dtc_frame,
     decode_dtc_bytes,
+    decode_dtc_frame,
     decode_pid_response,
-    parse_raw_ecu_log,
     format_log_summary,
-    ECUResponseFrame,
+    parse_raw_ecu_log,
 )
 
 

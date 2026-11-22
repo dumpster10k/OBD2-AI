@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +107,7 @@ class MockLLMBackend(LLMBackend):
                 f"{DISCLAIMER_TEXT}"
             )
 
-        return (
-            f"Odpowiedź asystenta diagnostycznego na zapytanie. {DISCLAIMER_TEXT}"
-        )
+        return f"Odpowiedź asystenta diagnostycznego na zapytanie. {DISCLAIMER_TEXT}"
 
 
 class LlamaCppBackend(LLMBackend):

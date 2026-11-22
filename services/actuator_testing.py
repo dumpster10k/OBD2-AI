@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-import time
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 
 class ActuatorProtocol(str, Enum):
