@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+import sys
 from typing import Any, Optional
+
+# Zapewnienie dostępności modułów nadrzędnych (core, services)
+project_root = str(Path(__file__).resolve().parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 try:
     from kivy.app import App
