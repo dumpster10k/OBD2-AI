@@ -1,0 +1,40 @@
+# Konfiguracja lintera i formatowania Ruff dla projektu OBD2-AI
+target-version = "py310"
+line-length = 120
+indent-width = 4
+
+[lint]
+select = [
+    "E",      # pycodestyle errors (w tym błędy składniowe E999)
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes (niezdefiniowane zmienne, nieużywane importy, błędy atrybutów)
+    "I",      # isort (organizacja i sortowanie importów)
+    "UP",     # pyupgrade (nowoczesna składnia Pythona 3.10+)
+    "B",      # flake8-bugbear (częste błędy logiczne i pułapki)
+    "C4",     # flake8-comprehensions
+]
+ignore = [
+    "E501",   # Długość linii (obsługiwana przez autoformatowanie)
+    "B008",   # Wywołania funkcji w wartościach domyślnych
+    "B904",   # raise ... from err (opcjonalne przy wyjątkach diagnostycznych)
+    "UP045",  # Utrzymanie wstecznej kompatybilności Optional[T]
+]
+exclude = [
+    ".git",
+    ".pytest_cache",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "__pycache__",
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["B018", "F841", "E402"]  # Luźniejsze reguły dla mocków i asercji w testach
+"ui/main.py" = ["E402"]                # WidgetStub i sys.path definiowane przed importami Kivy
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

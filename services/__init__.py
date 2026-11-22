@@ -1,12 +1,56 @@
+from services.actuator_testing import (
+    ActuatorCatalog,
+    ActuatorProtocol,
+    ActuatorSafetyPreflight,
+    ActuatorTestCategory,
+    ActuatorTestDefinition,
+    ActuatorTestResult,
+    ActuatorTestRunner,
+    ActuatorTestStatus,
+)
 from services.ai_engine import AIEngine, Diagnosis
 from services.diagnostic_ai import (
-    DiagnosticAI,
     DiagnosisReport,
+    DiagnosticAI,
     DTCFinding,
     LocalDiagnosticAI,
     RuleBasedDiagnosticAI,
 )
+from services.ecu_interpreter import (
+    ECUResponseFrame,
+    decode_dtc_bytes,
+    decode_dtc_frame,
+    decode_pid_response,
+    format_log_summary,
+    parse_raw_ecu_log,
+)
+from services.llm_engine import (
+    RECOMMENDED_LLM_MODELS,
+    LlamaCppBackend,
+    LLMBackend,
+    LLMModelSpec,
+    LocalLLMEngine,
+    MockLLMBackend,
+)
 from services.sensor_manager import SensorDefinition, SensorManager
+from services.speech_service import (
+    RECOMMENDED_SPEECH_MODELS,
+    MockSTTBackend,
+    MockTTSBackend,
+    SpeechModelSpec,
+    SpeechService,
+    STTBackend,
+    TTSBackend,
+    VoiceDiagnosticAssistant,
+)
+from services.telemetry_logger import TelemetryLogger, mask_vin
+from services.telemetry_metrics import (
+    STANDARD_METRIC_THRESHOLDS,
+    MetricThresholds,
+    calculate_series_stats,
+    evaluate_metric_status,
+    value_to_gauge_angle,
+)
 
 __all__ = [
     "AIEngine",
@@ -18,4 +62,39 @@ __all__ = [
     "RuleBasedDiagnosticAI",
     "SensorDefinition",
     "SensorManager",
+    "LLMModelSpec",
+    "RECOMMENDED_LLM_MODELS",
+    "LLMBackend",
+    "MockLLMBackend",
+    "LlamaCppBackend",
+    "LocalLLMEngine",
+    "SpeechModelSpec",
+    "RECOMMENDED_SPEECH_MODELS",
+    "STTBackend",
+    "TTSBackend",
+    "MockSTTBackend",
+    "MockTTSBackend",
+    "SpeechService",
+    "VoiceDiagnosticAssistant",
+    "TelemetryLogger",
+    "mask_vin",
+    "ECUResponseFrame",
+    "decode_dtc_bytes",
+    "decode_dtc_frame",
+    "decode_pid_response",
+    "parse_raw_ecu_log",
+    "format_log_summary",
+    "MetricThresholds",
+    "STANDARD_METRIC_THRESHOLDS",
+    "calculate_series_stats",
+    "value_to_gauge_angle",
+    "evaluate_metric_status",
+    "ActuatorProtocol",
+    "ActuatorTestCategory",
+    "ActuatorTestStatus",
+    "ActuatorTestDefinition",
+    "ActuatorTestResult",
+    "ActuatorSafetyPreflight",
+    "ActuatorCatalog",
+    "ActuatorTestRunner",
 ]

@@ -6,7 +6,6 @@ from services.ai_engine import AIEngine
 from services.diagnostic_ai import (
     DiagnosisReport,
     DiagnosticAI,
-    DTCFinding,
     LocalDiagnosticAI,
     RuleBasedDiagnosticAI,
 )
@@ -169,4 +168,3 @@ def test_abstract_diagnostic_ai():
 
     with pytest.raises(NotImplementedError):
         DummyAI().analyze({})
-
