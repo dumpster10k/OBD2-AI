@@ -1,3 +1,13 @@
+from services.actuator_testing import (
+    ActuatorCatalog,
+    ActuatorProtocol,
+    ActuatorSafetyPreflight,
+    ActuatorTestCategory,
+    ActuatorTestDefinition,
+    ActuatorTestResult,
+    ActuatorTestRunner,
+    ActuatorTestStatus,
+)
 from services.ai_engine import AIEngine, Diagnosis
 from services.diagnostic_ai import (
     DiagnosisReport,
@@ -79,4 +89,12 @@ __all__ = [
     "calculate_series_stats",
     "value_to_gauge_angle",
     "evaluate_metric_status",
+    "ActuatorProtocol",
+    "ActuatorTestCategory",
+    "ActuatorTestStatus",
+    "ActuatorTestDefinition",
+    "ActuatorTestResult",
+    "ActuatorSafetyPreflight",
+    "ActuatorCatalog",
+    "ActuatorTestRunner",
 ]

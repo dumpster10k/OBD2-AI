@@ -95,6 +95,13 @@ except ImportError:
 
 
 from core.obd_client import OBDClient
+from services.actuator_testing import (
+    ActuatorCatalog,
+    ActuatorTestCategory,
+    ActuatorTestDefinition,
+    ActuatorTestResult,
+    ActuatorTestRunner,
+)
 from services.ai_engine import AIEngine
 from services.diagnostic_ai import DiagnosisReport
 from services.llm_engine import (
@@ -500,6 +507,39 @@ class DashboardController:
             "coolant_temp": [0.0],
             "voltage": [0.0],
         }
+        self.actuator_runner: ActuatorTestRunner = ActuatorTestRunner(
+            obd_client=self.obd,
+            telemetry_logger=self.telemetry_logger,
+        )
+
+    def list_actuator_tests(self, category: Optional[str] = None) -> list[ActuatorTestDefinition]:
+        """Zwraca listę dostępnych procedur testowania elementów wykonawczych."""
+        cat_enum = None
+        if category:
+            try:
+                cat_enum = ActuatorTestCategory(category)
+            except Exception:
+                pass
+        return ActuatorCatalog.list_tests(category=cat_enum)
+
+    def start_actuator_test(self, test_id: str) -> ActuatorTestResult:
+        """Uruchamia test podzespołu z bieżącą telemetrią."""
+        telemetry = self.telemetry if not self.simulation_mode else self.simulated_telemetry
+        return self.actuator_runner.start_test(test_id, telemetry)
+
+    def update_actuator_progress(self) -> ActuatorTestResult:
+        """Odpytuje status trwającego testu, sprawdza watchdog i bezpieczeństwo w czasie rzeczywistym."""
+        telemetry = self.telemetry if not self.simulation_mode else self.simulated_telemetry
+        return self.actuator_runner.update_progress(telemetry)
+
+    def abort_actuator_test(self, reason: str = "Przerwano ręcznie przez operatora.") -> ActuatorTestResult:
+        """Wymusza natychmiastowe zatrzymanie aktywnego testu (Emergency Abort)."""
+        telemetry = self.telemetry if not self.simulation_mode else self.simulated_telemetry
+        return self.actuator_runner.abort_test(reason=reason, current_telemetry=telemetry)
+
+    def record_actuator_feedback(self, test_id: str, passed: bool, notes: str = "") -> Optional[ActuatorTestResult]:
+        """Zapisuje subiektywną weryfikację mechanika po wykonaniu testu."""
+        return self.actuator_runner.record_operator_feedback(test_id=test_id, passed=passed, notes=notes)
 
     def apply_connection_profile(self, profile_key: str) -> dict[str, Any]:
         """Aplikuje predefiniowany profil połączenia (Mobile Bluetooth / Laptop USB / Laptop Bluetooth / Auto)."""
