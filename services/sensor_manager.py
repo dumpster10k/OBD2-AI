@@ -66,14 +66,30 @@ class SensorManager:
         return manager
 
     @classmethod
+    def with_european_and_world_sensors(cls) -> SensorManager:
+        """Fabryka inicjalizująca czujniki dla marek europejskich i światowych (BMW, PSA, Ford, Mercedes, Renault, Toyota)."""
+        from services.sensor_database import get_european_and_world_sensors
+
+        manager = cls()
+        for sensor in get_european_and_world_sensors():
+            manager.add_sensor(sensor)
+        return manager
+
+    @classmethod
     def with_full_database(cls) -> SensorManager:
-        """Fabryka inicjalizująca bazę standardową OBD-II oraz dedykowaną dla grupy VAG."""
-        from services.sensor_database import get_standard_obd2_sensors, get_vag_sensors
+        """Fabryka inicjalizująca pełną bazę: standardowe OBD-II, VAG oraz marki europejskie i światowe."""
+        from services.sensor_database import (
+            get_european_and_world_sensors,
+            get_standard_obd2_sensors,
+            get_vag_sensors,
+        )
 
         manager = cls()
         for sensor in get_standard_obd2_sensors():
             manager.add_sensor(sensor)
         for sensor in get_vag_sensors():
+            manager.add_sensor(sensor)
+        for sensor in get_european_and_world_sensors():
             manager.add_sensor(sensor)
         return manager
 

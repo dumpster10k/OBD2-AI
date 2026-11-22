@@ -67,8 +67,16 @@ class VINDecoder:
         "VF3": ("PSA", "Peugeot"),
         "VF7": ("PSA", "Citroën"),
         "VF1": ("Renault", "Renault"),
+        "UU1": ("Renault", "Dacia"),
         "WF0": ("Ford", "Ford"),
         "W0L": ("Opel", "Opel"),
+        "JT1": ("Toyota", "Toyota"),
+        "JT2": ("Toyota", "Toyota"),
+        "JTD": ("Toyota", "Toyota"),
+        "JTE": ("Toyota", "Toyota"),
+        "SB1": ("Toyota", "Toyota"),
+        "WBY": ("BMW", "BMW i"),
+        "WDF": ("Mercedes", "Mercedes-Benz"),
     }
 
     # 10. znak VIN określa rok modelowy
@@ -190,7 +198,24 @@ class ECUIdentifier:
         # 2. VAG 1.9 TDI / 2.0 TDI PD (Bosch EDC16U1 / EDC16U34)
         # Przykłady: 03G906016, 03G906021
         if (
-            ("EDC16" in raw_norm and "3.0" not in raw_norm and "CP" not in raw_norm)
+            (
+                "EDC16" in raw_norm
+                and not any(
+                    k in raw_norm
+                    for k in [
+                        "3.0",
+                        "CP",
+                        "HDI",
+                        "TDCI",
+                        "DV6",
+                        "DW10",
+                        "DDE",
+                        "CDI",
+                        "K9K",
+                        "C34",
+                    ]
+                )
+            )
             or "03G906016" in raw_norm
             or "03G906021" in raw_norm
         ):
@@ -222,7 +247,35 @@ class ECUIdentifier:
 
         # 4. VAG 2.0 TDI Common Rail (Bosch EDC17)
         # Przykłady: 03L906018, 03L906022, EDC17CP14, EDC17C46
-        if "EDC17" in raw_norm or "03L906018" in raw_norm or "03L906022" in raw_norm:
+        if (
+            (
+                "EDC17" in raw_norm
+                and not any(
+                    k in raw_norm
+                    for k in [
+                        "3.0",
+                        "CP44",
+                        "CP45",
+                        "BMW",
+                        "DDE",
+                        "N47",
+                        "B47",
+                        "N57",
+                        "HDI",
+                        "TDCI",
+                        "DV6",
+                        "DW10",
+                        "C10",
+                        "C84",
+                        "C50",
+                        "C41",
+                        "C06",
+                    ]
+                )
+            )
+            or "03L906018" in raw_norm
+            or "03L906022" in raw_norm
+        ):
             return {
                 "vendor": "VAG",
                 "engine_code": "2.0 TDI CR",
@@ -423,6 +476,294 @@ class ECUIdentifier:
                 "recommended_protocol": "KWP2000",
             }
 
+        # --- BMW ---
+        # 16. BMW M57 3.0d (Bosch DDE5 / DDE6)
+        if (
+            "DDE5" in raw_norm
+            or "DDE6" in raw_norm
+            or "M57" in raw_norm
+            or ("BMW" in raw_norm and "3.0D" in raw_norm and "N57" not in raw_norm)
+        ):
+            return {
+                "vendor": "BMW",
+                "engine_code": "M57 3.0d",
+                "engine_name": "BMW M57 3.0d R6 (Common Rail DDE5/DDE6 M57D30)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "DDE6",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 17. BMW N47 / B47 2.0d (Bosch DDE7 / EDC17C06 / EDC17C41 / EDC17C50)
+        if (
+            "DDE7" in raw_norm
+            or "N47" in raw_norm
+            or "B47" in raw_norm
+            or ("BMW" in raw_norm and "2.0D" in raw_norm)
+            or any(c in raw_norm for c in ["EDC17C06", "EDC17C41", "EDC17C50"])
+        ):
+            return {
+                "vendor": "BMW",
+                "engine_code": "N47/B47 2.0d",
+                "engine_name": "BMW N47/B47 2.0d (Rozrząd tył silnika, DPF, DDE7/EDC17)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "DDE7",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 18. BMW N57 3.0d (Bosch EDC17CP45)
+        if (
+            "N57" in raw_norm
+            or ("EDC17CP45" in raw_norm)
+            or ("BMW" in raw_norm and "3.0D" in raw_norm and "CP45" in raw_norm)
+        ):
+            return {
+                "vendor": "BMW",
+                "engine_code": "N57 3.0d",
+                "engine_name": "BMW N57 3.0d R6 (EDC17CP45 piezo CR)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "EDC17CP45",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 19. BMW M54 2.2/2.5/3.0 (Siemens MS43 / MS45)
+        if (
+            "MS43" in raw_norm
+            or "MS45" in raw_norm
+            or "M54" in raw_norm
+            or ("BMW" in raw_norm and ("325I" in raw_norm or "330I" in raw_norm or "530I" in raw_norm))
+        ):
+            return {
+                "vendor": "BMW",
+                "engine_code": "M54 R6",
+                "engine_name": "BMW M54 2.2/2.5/3.0 R6 (Podwójny Vanos, DISA, MS43/MS45)",
+                "fuel_type": "petrol",
+                "has_turbo": False,
+                "has_dpf": False,
+                "ecu_family": "MS43",
+                "recommended_protocol": "KWP2000",
+            }
+
+        # 20. BMW N52 / N55 / B48 / B58 Valvetronic (Siemens MSV70/MSV80 / Bosch MEVD17)
+        if (
+            "MEVD17" in raw_norm
+            or "MSV70" in raw_norm
+            or "MSV80" in raw_norm
+            or any(c in raw_norm for c in ["N52", "N55", "B48", "B58", "VALVETRONIC"])
+        ):
+            return {
+                "vendor": "BMW",
+                "engine_code": "N52/N55/B48/B58",
+                "engine_name": "BMW R4/R6 Valvetronic (Vanos + Valvetronic mimośród, MEVD17)",
+                "fuel_type": "petrol",
+                "has_turbo": True,
+                "has_dpf": False,
+                "ecu_family": "MEVD17",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # --- PSA & FORD ---
+        # 21. PSA / Ford 1.6 HDi / TDCi (Bosch EDC16C34 / EDC17C10)
+        if (
+            "EDC16C34" in raw_norm
+            or "EDC17C10" in raw_norm
+            or "DV6" in raw_norm
+            or (
+                ("PSA" in raw_norm or "FORD" in raw_norm)
+                and "1.6" in raw_norm
+                and ("HDI" in raw_norm or "TDCI" in raw_norm)
+            )
+        ):
+            return {
+                "vendor": "PSA",
+                "engine_code": "1.6 HDi/TDCi",
+                "engine_name": "1.6 HDi / TDCi DV6 (FAP mokry z Eolys, EDC16C34/EDC17)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "EDC16C34",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 22. PSA / Ford 2.0 HDi / TDCi (Siemens SID803 / Delphi DCM3.5)
+        if (
+            "SID803" in raw_norm
+            or "DCM3.5" in raw_norm
+            or "DCM6.2" in raw_norm
+            or "DW10" in raw_norm
+            or (
+                ("PSA" in raw_norm or "FORD" in raw_norm)
+                and "2.0" in raw_norm
+                and ("HDI" in raw_norm or "TDCI" in raw_norm)
+            )
+        ):
+            return {
+                "vendor": "PSA",
+                "engine_code": "2.0 HDi/TDCi",
+                "engine_name": "2.0 HDi / TDCi DW10 (Common Rail Siemens/Delphi/Bosch)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "SID803",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 23. Ford 1.0 EcoBoost (Bosch MED17.0.7 / Continental EMS2211)
+        if "ECOBOOST" in raw_norm or ("FORD" in raw_norm and "1.0" in raw_norm) or "EMS2211" in raw_norm:
+            return {
+                "vendor": "Ford",
+                "engine_code": "1.0 EcoBoost",
+                "engine_name": "Ford 1.0 EcoBoost 3-cyl (Pasek w oleju wet-belt, turbo, MED17)",
+                "fuel_type": "petrol",
+                "has_turbo": True,
+                "has_dpf": False,
+                "ecu_family": "MED17",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 24. PSA 1.2 PureTech (Valeo V46 / Bosch MED17.4.4)
+        if (
+            "PURETECH" in raw_norm
+            or "EB2" in raw_norm
+            or (("PSA" in raw_norm or "PEUGEOT" in raw_norm or "CITROEN" in raw_norm) and "1.2" in raw_norm)
+        ):
+            return {
+                "vendor": "PSA",
+                "engine_code": "1.2 PureTech",
+                "engine_name": "PSA 1.2 PureTech EB2 (Pasek w kąpieli olejowej, smok olejowy)",
+                "fuel_type": "petrol",
+                "has_turbo": True,
+                "has_dpf": False,
+                "ecu_family": "MED17.4",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # --- MERCEDES-BENZ ---
+        # 25. Mercedes OM646 2.2 CDI (Bosch EDC16C2 / EDC16CP31)
+        if (
+            "OM646" in raw_norm
+            or "EDC16C2" in raw_norm
+            or "EDC16CP31" in raw_norm
+            or ("MERCEDES" in raw_norm and "2.2" in raw_norm and "CDI" in raw_norm)
+        ):
+            return {
+                "vendor": "Mercedes",
+                "engine_code": "OM646 2.2 CDI",
+                "engine_name": "Mercedes OM646 2.2 CDI R4 (EDC16, żeliwny blok)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "EDC16CP31",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 26. Mercedes OM651 2.1 CDI (Delphi CRD2 / CRD3)
+        if (
+            "OM651" in raw_norm
+            or "CRD2" in raw_norm
+            or "CRD3" in raw_norm
+            or ("MERCEDES" in raw_norm and "2.1" in raw_norm and "CDI" in raw_norm)
+        ):
+            return {
+                "vendor": "Mercedes",
+                "engine_code": "OM651 2.1 CDI",
+                "engine_name": "Mercedes OM651 2.1 CDI (Wtrysk Delphi piezo/solenoid, rozrząd tył)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "CRD3",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 27. Mercedes M271 1.8 Kompressor / CGI (Siemens SIM4 / Bosch MED17.7)
+        if "M271" in raw_norm or "SIM4" in raw_norm or ("KOMPRESSOR" in raw_norm and "1.8" in raw_norm):
+            return {
+                "vendor": "Mercedes",
+                "engine_code": "M271 1.8",
+                "engine_name": "Mercedes M271 1.8 Kompressor/CGI (Wariatory faz rozrządu, łańcuch)",
+                "fuel_type": "petrol",
+                "has_turbo": True,
+                "has_dpf": False,
+                "ecu_family": "SIM4",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # --- RENAULT & DACIA ---
+        # 28. Renault 1.5 dCi K9K (Delphi DDCR / DCM1.2 / Bosch EDC17C84)
+        if (
+            "K9K" in raw_norm
+            or ("1.5" in raw_norm and "DCI" in raw_norm)
+            or any(c in raw_norm for c in ["DDCR", "DCM1.2", "EDC17C84"])
+        ):
+            return {
+                "vendor": "Renault",
+                "engine_code": "1.5 dCi K9K",
+                "engine_name": "Renault 1.5 dCi K9K (Common Rail Delphi/Bosch, panewki, EGR)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "DCM1.2",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 29. Renault 1.2 / 1.3 TCe (Continental EMS3125 / Bosch MED17)
+        if "EMS3125" in raw_norm or "TCE" in raw_norm or "H5FT" in raw_norm or "H5HT" in raw_norm:
+            return {
+                "vendor": "Renault",
+                "engine_code": "1.2/1.3 TCe",
+                "engine_name": "Renault 1.2/1.3 TCe H5Ft/H5Ht (Turbo benzyna bezpośredni wtrysk)",
+                "fuel_type": "petrol",
+                "has_turbo": True,
+                "has_dpf": False,
+                "ecu_family": "EMS3125",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # --- TOYOTA ---
+        # 30. Toyota 1.8 Hybrid HSD (Denso THS-II / HV ECU)
+        if (
+            "THS-II" in raw_norm
+            or "THS" in raw_norm
+            or "2ZR-FXE" in raw_norm
+            or ("TOYOTA" in raw_norm and "HYBRID" in raw_norm)
+            or "PRIUS" in raw_norm
+            or ("AURIS" in raw_norm and "HYBRID" in raw_norm)
+        ):
+            return {
+                "vendor": "Toyota",
+                "engine_code": "1.8 Hybrid 2ZR-FXE",
+                "engine_name": "Toyota 1.8 Hybrid HSD (Bateria trakcyjna HV bloki 1-14, inwerter MG1/MG2, cykl Atkinsona)",
+                "fuel_type": "hybrid",
+                "has_turbo": False,
+                "has_dpf": False,
+                "ecu_family": "DensoHV",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
+        # 31. Toyota 2.0 / 2.2 D-4D (Denso ECD-U2 / D-CAT)
+        if (
+            "D-4D" in raw_norm
+            or "D4D" in raw_norm
+            or "1CD-FTV" in raw_norm
+            or "2AD-FHV" in raw_norm
+            or ("TOYOTA" in raw_norm and "DENSO" in raw_norm and "DIESEL" in raw_norm)
+        ):
+            return {
+                "vendor": "Toyota",
+                "engine_code": "2.0/2.2 D-4D",
+                "engine_name": "Toyota 2.0/2.2 D-4D 1CD/2AD (Wtryskiwacze Denso, zawór SCV)",
+                "fuel_type": "diesel",
+                "has_turbo": True,
+                "has_dpf": True,
+                "ecu_family": "DensoECD",
+                "recommended_protocol": "ISO_14229_UDS",
+            }
+
         # Domyślny fallback: Uniwersalny sterownik OBD-II
         return {
             "vendor": "Standard",
@@ -468,9 +809,51 @@ class VehicleProfiler:
         # -------------------------------------------------------------
         active_sensors = ["Engine RPM", "Vehicle Speed", "Engine Coolant Temp", "Calculated Engine Load"]
 
-        # VAG silniki Diesla
+        # Silniki Diesla
         if fuel_type == "diesel":
-            if "PD" in engine_code or ecu_family == "EDC15P":
+            if vendor == "BMW":
+                active_sensors.extend(
+                    [
+                        "BMW DDE Common Rail Pressure",
+                        "BMW DDE DPF Soot Mass",
+                        "BMW DDE DPF Exhaust Backpressure",
+                        "Control Module Voltage",
+                    ]
+                )
+            elif vendor in ["PSA", "Ford"]:
+                active_sensors.extend(
+                    [
+                        "PSA HDi Rail Fuel Pressure",
+                        "PSA FAP Differential Pressure",
+                        "PSA FAP Eolys Additive Level",
+                        "Control Module Voltage",
+                    ]
+                )
+            elif vendor == "Mercedes":
+                active_sensors.extend(
+                    [
+                        "Mercedes CDI Common Rail Pressure",
+                        "Mercedes CDI DPF Ash Content",
+                        "Control Module Voltage",
+                    ]
+                )
+            elif vendor == "Renault":
+                active_sensors.extend(
+                    [
+                        "Renault 1.5 dCi Rail Pressure",
+                        "Renault dCi DPF Soot Load",
+                        "Control Module Voltage",
+                    ]
+                )
+            elif vendor == "Toyota":
+                active_sensors.extend(
+                    [
+                        "Toyota D-4D Denso SCV Valve Duty",
+                        "Fuel Rail High Pressure Actual",
+                        "Control Module Voltage",
+                    ]
+                )
+            elif "PD" in engine_code or ecu_family == "EDC15P":
                 active_sensors.extend(
                     [
                         "VAG Torsion Value",
@@ -494,6 +877,58 @@ class VehicleProfiler:
                         "Control Module Voltage",
                     ]
                 )
+        # Napędy hybrydowe (Toyota HSD / Prius / Auris)
+        elif fuel_type == "hybrid":
+            active_sensors.extend(
+                [
+                    "Toyota HSD HV Battery State of Charge",
+                    "Toyota HSD HV Battery Current",
+                    "Toyota HSD HV Battery Block Min Voltage",
+                    "Toyota HSD HV Battery Block Max Voltage",
+                    "Toyota HSD HV Battery Block Delta Voltage",
+                    "Toyota HSD Inverter Temp MG1",
+                    "Toyota HSD Inverter Temp MG2",
+                    "Control Module Voltage",
+                ]
+            )
+        # BMW silniki benzynowe (Vanos + Valvetronic)
+        elif vendor == "BMW" and fuel_type == "petrol":
+            active_sensors.extend(
+                [
+                    "BMW Vanos Intake Cam Angle",
+                    "BMW Vanos Exhaust Cam Angle",
+                    "BMW Valvetronic Eccentric Shaft Angle",
+                    "Control Module Voltage",
+                ]
+            )
+        # PSA / Ford silniki z paskiem w kąpieli olejowej (PureTech / EcoBoost)
+        elif (
+            vendor in ["PSA", "Ford"] or "PureTech" in engine_code or "EcoBoost" in engine_code
+        ) and fuel_type == "petrol":
+            active_sensors.extend(
+                [
+                    "Ford PureTech Wet Belt Oil Pressure",
+                    "Intake Manifold Absolute Pressure",
+                    "Control Module Voltage",
+                ]
+            )
+        # Mercedes benzynowe (M271)
+        elif vendor == "Mercedes" and "M271" in engine_code:
+            active_sensors.extend(
+                [
+                    "Mercedes M271 Camshaft Phase Deviation",
+                    "Intake Manifold Absolute Pressure",
+                    "Control Module Voltage",
+                ]
+            )
+        # Renault TCe
+        elif vendor == "Renault" and "TCe" in engine_code:
+            active_sensors.extend(
+                [
+                    "Renault TCe Manifold Boost Pressure",
+                    "Control Module Voltage",
+                ]
+            )
         # VAG silniki benzynowe wolnossące (1.6 MPI 8V, VR6, 4.2 V8)
         elif not has_turbo and vendor == "VAG":
             if "VR6" in engine_code:
