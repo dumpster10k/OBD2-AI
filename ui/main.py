@@ -28,6 +28,7 @@ except ImportError:
         def __init__(self, *args, **kwargs):
             self.children: list[Any] = []
             self.text: str = kwargs.get("text", "")
+            self.color: list[float] = kwargs.get("color", [1.0, 1.0, 1.0, 1.0])
             self.size_hint_y = kwargs.get("size_hint_y", 1)
             self.height = kwargs.get("height", 100)
             self.width = kwargs.get("width", 100)
@@ -41,6 +42,11 @@ except ImportError:
 
         def bind(self, **kwargs) -> None:
             pass
+
+        def setter(self, name: str) -> Any:
+            def _setter(val: Any) -> None:
+                setattr(self, name, val)
+            return _setter
 
     class App:
         def build(self) -> Any:
@@ -302,7 +308,8 @@ class CarDoctorUI(BoxLayout):
             padding=[16, 16, 16, 20],
             size_hint_y=None,
         )
-        self.content_box.bind(minimum_height=self.content_box.setter("height"))
+        if hasattr(self.content_box, "setter"):
+            self.content_box.bind(minimum_height=self.content_box.setter("height"))
 
         # ---------------------------------------------------------------------
         # 1. Nagłówek i status połączenia
