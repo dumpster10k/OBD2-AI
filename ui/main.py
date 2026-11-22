@@ -61,7 +61,11 @@ except ImportError:
 from core.obd_client import OBDClient
 from services.ai_engine import AIEngine
 from services.diagnostic_ai import DiagnosisReport
-from services.llm_engine import DISCLAIMER_TEXT
+from services.llm_engine import (
+    DISCLAIMER_TEXT,
+    LLMModelSpec,
+    RECOMMENDED_LLM_MODELS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +92,11 @@ class DashboardController:
         self.last_voice_response: str = ""
         self.dtc_clear_pending: bool = False
         self.session_log: list[dict[str, Any]] = []
+
+        # Konfiguracja modelu AI
+        self.available_models: list[LLMModelSpec] = list(RECOMMENDED_LLM_MODELS.values())
+        self.current_model_spec: Optional[LLMModelSpec] = self.available_models[0] if self.available_models else None
+        self.model_backend_status: str = "Dostępny (Mock)"
 
     def refresh_telemetry(self) -> dict[str, Any]:
         """Pobiera i aktualizuje bieżące parametry telemetryczne pojazdu."""
@@ -208,6 +217,16 @@ class DashboardController:
         self.last_voice_response = response
         return query, response, out_audio
 
+    def load_available_models(self) -> None:
+        """Pobiera listę dostępnych modeli LLM."""
+        self.available_models = list(RECOMMENDED_LLM_MODELS.values())
+
+    def on_model_select(self, model_spec: LLMModelSpec) -> None:
+        """Obsługa wybrania modelu LLM."""
+        self.current_model_spec = model_spec
+        self.model_backend_status = "Dostępny (Mock)"
+        logger.info(f"Wybrano model: {model_spec.name}")
+
 
 class CarDoctorUI(BoxLayout):
     """Główny interfejs mobilny Kivy z pulpitem telemetrii, raportem AI i asystentem głosowym."""
@@ -224,7 +243,26 @@ class CarDoctorUI(BoxLayout):
         )
         self.add_widget(self.status_label)
 
-        # 2. Pulpit telemetrii (Karty parametrów na żywo)
+        # 2. Panel selektora modeli AI
+        model_selector_box = BoxLayout(orientation="vertical", size_hint_y=None, height=160, spacing=5)
+        self.model_status_label = Label(
+            text="🤖 Model AI: Nie wybrano",
+            size_hint_y=None,
+            height=30,
+            font_size=14,
+            bold=True,
+        )
+        model_selector_box.add_widget(self.model_status_label)
+
+        self.models_grid = GridLayout(cols=2, spacing=5, size_hint_y=None)
+        self.models_grid.cols = 1  # Jedna kolumna na małych ekranach
+        self.models_grid.spacing_y = 5
+
+        self._create_model_cards()
+        model_selector_box.add_widget(self.models_grid)
+        self.add_widget(model_selector_box)
+
+        # 3. Pulpit telemetrii (Karty parametrów na żywo)
         telemetry_box = BoxLayout(
             orientation="vertical", size_hint_y=None, height=140, spacing=5
         )
@@ -301,12 +339,93 @@ class CarDoctorUI(BoxLayout):
         # Inicjalne odświeżenie danych telemetrii
         self.update_telemetry_ui()
 
+    def _create_model_cards(self) -> None:
+        """Tworzy karty dla każdego dostępnego modelu LLM."""
+        for model in self.controller.available_models:
+            # Karta modelu
+            model_card = BoxLayout(orientation="vertical", size_hint_y=None, height=80, spacing=3)
+
+            # Nazwa modelu
+            model_name_label = Label(
+                text=model.name,
+                size_hint_y=None,
+                height=24,
+                font_size=13,
+                bold=True,
+            )
+
+            # Specyfikacja (rozmiar, RAM)
+            spec_label = Label(
+                text=f"📦 {model.size_mb} MB | 💾 {model.ram_required_mb} MB RAM",
+                size_hint_y=None,
+                height=18,
+                font_size=11,
+            )
+
+            # Rekomendacja
+            rec_label = Label(
+                text=self._get_recommendation_text(model),
+                size_hint_y=None,
+                height=16,
+                font_size=10,
+                color=1,  # Jasny kolor dla kontrastu
+            )
+
+            model_card.add_widget(model_name_label)
+            model_card.add_widget(spec_label)
+            model_card.add_widget(rec_label)
+
+            # Przycisk wyboru
+            select_btn = Button(
+                text="Wybierz",
+                size_hint_y=None,
+                height=30,
+                font_size=11,
+            )
+            select_btn.bind(on_press=self._on_model_card_press)
+            select_btn.user_data = model  # Przechowujemy obiekt modelu
+            model_card.add_widget(select_btn)
+
+            self.models_grid.add_widget(model_card)
+
+    def _get_recommendation_text(self, model: LLMModelSpec) -> str:
+        """Zwraca tekst rekomendacji dla modelu."""
+        rec = model.recommended_for
+        if rec == "mobile_ultra_light":
+            return "🚀 Dla starszych telefonów"
+        elif rec == "mobile_standard":
+            return "⭐ Zalecany domyślny"
+        elif rec == "mobile_high_end":
+            return "🏆 Najlepszy polski"
+        return rec
+
+    def _on_model_card_press(self, _btn: Button) -> None:
+        """Obsługa kliknięcia w kartę modelu."""
+        model = _btn.user_data
+        if model:
+            self.controller.on_model_select(model)
+            self.model_status_label.text = f"🤖 Model AI: {model.name}"
+            self.model_status_label.color = 0x00FF00  # Zielony
+        else:
+            self.model_status_label.text = f"🤖 Model AI: Nie wybrano"
+            self.model_status_label.color = 1  # Szary
+
     def update_telemetry_ui(self) -> None:
         t = self.controller.telemetry
         self.rpm_label.text = f"Obroty: {t.get('rpm', 0)} RPM"
         self.speed_label.text = f"Prędkość: {t.get('speed', 0)} km/h"
         self.coolant_label.text = f"Temp. płynu: {t.get('coolant_temp', 0)} °C"
         self.voltage_label.text = f"Napięcie: {t.get('voltage', 0.0):.1f} V"
+
+    def on_model_select_action(self, _btn: Button) -> None:
+        """Obsługa przycisku wybrania modelu."""
+        if self.controller.current_model_spec:
+            self.controller.on_model_select(self.controller.current_model_spec)
+            self.model_status_label.text = f"🤖 Model AI: {self.controller.current_model_spec.name}"
+            self.model_status_label.color = 0x00FF00  # Zielony
+        else:
+            self.model_status_label.text = f"🤖 Model AI: Nie wybrano"
+            self.model_status_label.color = 1  # Szary
 
     def on_refresh_telemetry(self, _btn=None) -> None:
         self.controller.refresh_telemetry()
