@@ -309,6 +309,17 @@ class TelemetryChart(StyledCard):
 
         # 1. Pasek nagłówka z przełącznikiem metryk
         header_box = BoxLayout(size_hint_y=None, height=28, spacing=6)
+        # --- Dodano przycisk trybu agenta ---
+        self.btn_agent_mode = Button(
+            text="🔴 Agent: Pytaj",
+            font_size="11sp",
+            bold=True,
+            size_hint_x=0.2,
+            background_normal="",
+            background_color=(0.18, 0.22, 0.30, 1.0),
+        )
+        self.btn_agent_mode.bind(on_press=self._cycle_agent_mode)
+        header_box.add_widget(self.btn_agent_mode)
         self.chart_title = Label(
             text="📈 WYKRES TELEMETRII (OBROTY - RPM)",
             font_size="13sp",
