@@ -32,6 +32,7 @@ exclude = [
 [lint.per-file-ignores]
 "tests/*" = ["B018", "F841", "E402"]  # Luźniejsze reguły dla mocków i asercji w testach
 "ui/main.py" = ["E402"]                # WidgetStub i sys.path definiowane przed importami Kivy
+"scripts/*" = ["E402"]                # Skrypty CLI definiujące ścieżkę sys.path przed importami pakietu
 
 [format]
 quote-style = "double"
