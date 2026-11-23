@@ -195,3 +195,27 @@ def test_sensor_manager_filtering_and_categories():
     assert "fuel" in categories
     assert "exhaust" in categories
     assert "transmission" in categories
+
+
+def test_sensor_manager_european_and_world_sensors():
+    manager = SensorManager.with_european_and_world_sensors()
+    assert len(manager.list_sensors()) >= 20
+
+    # Sprawdzenie dostępnych marek
+    vendors = manager.list_vendors()
+    for exp_vendor in ["BMW", "PSA", "Ford", "Mercedes", "Renault", "Toyota"]:
+        assert exp_vendor in vendors
+
+    # Sprawdzenie kluczowych czujników
+    assert manager.get_by_short_name("BMW_VALVETRONIC") is not None
+    assert manager.get_by_short_name("PSA_EOLYS_LVL") is not None
+    assert manager.get_by_short_name("WET_BELT_OIL_P") is not None
+    assert manager.get_by_short_name("MB_RAIL_P") is not None
+    assert manager.get_by_short_name("REN_RAIL_P") is not None
+    assert manager.get_by_short_name("TOY_HV_SOC") is not None
+    assert manager.get_by_short_name("TOY_BLOCK_DELTA") is not None
+
+    # Ewaluacja formuły napięcia delty hybrydy (A * 0.01 V)
+    delta_sensor = manager.get_by_short_name("TOY_BLOCK_DELTA")
+    assert delta_sensor is not None
+    assert manager.evaluate_raw(delta_sensor, [25]) == 0.25

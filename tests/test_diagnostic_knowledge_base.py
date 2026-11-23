@@ -39,6 +39,24 @@ def test_sensor_location_catalog() -> None:
     # 5. Nieznany czujnik
     assert SensorLocationCatalog.get_location("unknown_sensor_xyz") is None
 
+    # 6. Nowe czujniki europejskie i światowe
+    loc_vvt = SensorLocationCatalog.get_location("bmw_valvetronic")
+    assert loc_vvt is not None
+    assert "Valvetronic" in loc_vvt.full_name
+    assert "0x2005" in loc_vvt.obd_pid
+
+    loc_eolys = SensorLocationCatalog.get_location("psa_fap_additive")
+    assert loc_eolys is not None
+    assert "Eolys" in loc_eolys.full_name
+
+    loc_wet_belt = SensorLocationCatalog.get_location("ford_psa_wet_belt")
+    assert loc_wet_belt is not None
+    assert "Wet Belt" in loc_wet_belt.full_name
+
+    loc_toyota_hv = SensorLocationCatalog.get_location("toyota_hybrid_battery")
+    assert loc_toyota_hv is not None
+    assert "baterii trakcyjnej" in loc_toyota_hv.full_name
+
 
 def test_diagnostic_procedure_registry() -> None:
     # 1. Procedura niedoładowania P0299
@@ -58,6 +76,29 @@ def test_diagnostic_procedure_registry() -> None:
     proc_hpfp = DiagnosticProcedureRegistry.find_by_dtc("P0087")
     assert proc_hpfp is not None
     assert "szklanki" in proc_hpfp.steps[1].title.lower() or "cam follower" in proc_hpfp.steps[1].title.lower()
+
+    # 4. Procedura Valvetronic BMW 2A67
+    proc_vvt = DiagnosticProcedureRegistry.find_by_dtc("2A67")
+    assert proc_vvt is not None
+    assert "Valvetronic" in proc_vvt.title
+    assert any("wtyczce" in s.title.lower() for s in proc_vvt.steps)
+
+    # 5. Procedura paska w oleju PureTech/EcoBoost P15A4
+    proc_puretech = DiagnosticProcedureRegistry.find_by_dtc("P15A4")
+    assert proc_puretech is not None
+    assert "wet-belt" in proc_puretech.title.lower()
+    assert any("przymiarem" in s.title.lower() for s in proc_puretech.steps)
+
+    # 6. Procedura baterii hybrydowej Toyota P0A80
+    proc_toyota = DiagnosticProcedureRegistry.find_by_dtc("P0A80")
+    assert proc_toyota is not None
+    assert "baterii trakcyjnej" in proc_toyota.title.lower()
+    assert any("delta" in s.title.lower() for s in proc_toyota.steps)
+
+    # 7. Procedura łańcucha rozrządu BMW N47 P0016
+    proc_n47 = DiagnosticProcedureRegistry.find_by_dtc("P0016")
+    assert proc_n47 is not None
+    assert "łańcucha" in proc_n47.title.lower()
 
     # 4. Pobieranie po ID
     proc_by_id = DiagnosticProcedureRegistry.get_procedure("dpf_regeneration_failure")

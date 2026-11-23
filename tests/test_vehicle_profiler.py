@@ -205,3 +205,62 @@ def test_vehicle_profiler_expanded_sensor_sets():
 
     p_vr6 = VehicleProfiler.detect_profile(vin="WVWZZZ1KZ8W123456", ecu_id="BUB VR6")
     assert "Camshaft Phase Bank 1 (Ch 208)" in p_vr6.active_sensor_names
+
+
+def test_vehicle_profiler_european_and_world_brands():
+    # 1. BMW M57 3.0d
+    p_bmw_m57 = VehicleProfiler.detect_profile(vin="WBAAL71010F123456", ecu_id="DDE6 M57 3.0D")
+    assert p_bmw_m57.brand == "BMW"
+    assert "M57 3.0d" in p_bmw_m57.engine_code
+    assert "BMW DDE Common Rail Pressure" in p_bmw_m57.active_sensor_names
+    assert "BMW DDE DPF Soot Mass" in p_bmw_m57.active_sensor_names
+
+    # 2. BMW N52 / N55 Valvetronic
+    p_bmw_vvt = VehicleProfiler.detect_profile(vin="WBAVB71010F123456", ecu_id="MEVD17 N55 Valvetronic")
+    assert p_bmw_vvt.brand == "BMW"
+    assert "Valvetronic" in p_bmw_vvt.engine_name
+    assert "BMW Valvetronic Eccentric Shaft Angle" in p_bmw_vvt.active_sensor_names
+    assert "BMW Vanos Intake Cam Angle" in p_bmw_vvt.active_sensor_names
+
+    # 3. PSA 1.6 HDi (Peugeot / Citroën)
+    p_psa_hdi = VehicleProfiler.detect_profile(vin="VF33H9HZC82123456", ecu_id="EDC16C34 DV6 1.6 HDI")
+    assert p_psa_hdi.brand == "Peugeot"
+    assert "1.6 HDi" in p_psa_hdi.engine_code
+    assert "PSA FAP Eolys Additive Level" in p_psa_hdi.active_sensor_names
+    assert "PSA FAP Differential Pressure" in p_psa_hdi.active_sensor_names
+
+    # 4. Ford 1.0 EcoBoost & PSA 1.2 PureTech (pasek w oleju)
+    p_ford = VehicleProfiler.detect_profile(vin="WF0AXXWPMA1234567", ecu_id="EcoBoost 1.0 EMS2211")
+    assert p_ford.brand == "Ford"
+    assert "1.0 EcoBoost" in p_ford.engine_code
+    assert "Ford PureTech Wet Belt Oil Pressure" in p_ford.active_sensor_names
+
+    p_puretech = VehicleProfiler.detect_profile(vin="VF7SCHMZ0EA123456", ecu_id="PureTech 1.2 EB2")
+    assert p_puretech.brand == "Citroën"
+    assert "PureTech" in p_puretech.engine_code
+    assert "Ford PureTech Wet Belt Oil Pressure" in p_puretech.active_sensor_names
+
+    # 5. Mercedes OM651 2.1 CDI
+    p_mb = VehicleProfiler.detect_profile(vin="WDD2040021A123456", ecu_id="CRD3 OM651 2.1 CDI")
+    assert p_mb.brand == "Mercedes-Benz"
+    assert "OM651" in p_mb.engine_code
+    assert "Mercedes CDI Common Rail Pressure" in p_mb.active_sensor_names
+    assert "Mercedes CDI DPF Ash Content" in p_mb.active_sensor_names
+
+    # 6. Renault 1.5 dCi & Dacia
+    p_renault = VehicleProfiler.detect_profile(vin="VF1JZ000548123456", ecu_id="DCM1.2 K9K 1.5 dCi")
+    assert p_renault.brand == "Renault"
+    assert "1.5 dCi" in p_renault.engine_code
+    assert "Renault 1.5 dCi Rail Pressure" in p_renault.active_sensor_names
+
+    p_dacia = VehicleProfiler.detect_profile(vin="UU1HSDACG54123456", ecu_id="EDC17C84 1.5 dCi K9K")
+    assert p_dacia.brand == "Dacia"
+
+    # 7. Toyota 1.8 Hybrid HSD
+    p_toyota = VehicleProfiler.detect_profile(vin="JTDKN36U001123456", ecu_id="THS-II 2ZR-FXE Prius Hybrid")
+    assert p_toyota.brand == "Toyota"
+    assert "1.8 Hybrid" in p_toyota.engine_code
+    assert p_toyota.fuel_type == "hybrid"
+    assert "Toyota HSD HV Battery State of Charge" in p_toyota.active_sensor_names
+    assert "Toyota HSD HV Battery Block Delta Voltage" in p_toyota.active_sensor_names
+    assert "Toyota HSD Inverter Temp MG1" in p_toyota.active_sensor_names

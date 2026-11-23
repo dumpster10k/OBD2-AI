@@ -32,7 +32,17 @@ from services.llm_engine import (
     LocalLLMEngine,
     MockLLMBackend,
 )
-from services.sensor_database import get_standard_obd2_sensors, get_vag_sensors
+from services.model_downloader import (
+    HUGGINGFACE_MODEL_REGISTRY,
+    DownloadStatus,
+    ModelDownloader,
+    ModelDownloadInfo,
+)
+from services.sensor_database import (
+    get_european_and_world_sensors,
+    get_standard_obd2_sensors,
+    get_vag_sensors,
+)
 from services.sensor_manager import SensorDefinition, SensorManager
 from services.speech_service import (
     RECOMMENDED_SPEECH_MODELS,
@@ -67,6 +77,7 @@ __all__ = [
     "SensorManager",
     "get_standard_obd2_sensors",
     "get_vag_sensors",
+    "get_european_and_world_sensors",
     "LLMModelSpec",
     "RECOMMENDED_LLM_MODELS",
     "LLMBackend",
@@ -107,4 +118,8 @@ __all__ = [
     "VINDecoder",
     "ECUIdentifier",
     "VehicleProfiler",
+    "ModelDownloader",
+    "DownloadStatus",
+    "ModelDownloadInfo",
+    "HUGGINGFACE_MODEL_REGISTRY",
 ]
